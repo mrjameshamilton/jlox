@@ -1,0 +1,15 @@
+plugins {
+    id 'java-library'
+}
+
+group 'eu.jameshamilton'
+
+repositories {
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(8))
+    }
+}

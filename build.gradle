@@ -1,0 +1,10 @@
+plugins {
+    id 'java'
+}
+
+group 'eu.jameshamilton'
+version '0.1'
+
+ext {
+    craftinginterpreters = file(new File(craftinginterpretersDir))
+}

@@ -1,0 +1,2 @@
+#!/bin/sh
+"$JAVA_HOME"/bin/java --enable-preview -jar "$(dirname "$0")"/../lib/jlox.jar $@
