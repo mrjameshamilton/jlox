@@ -70,9 +70,12 @@ public class ConstantExprSimplifier implements Stmt.Visitor<Stmt>, Expr.Visitor<
 
     @Override
     public Expr visitGroupingExpr(Expr.Grouping expr) {
-        if (expr.expression instanceof Expr.Literal literalExpr) return literalExpr;
-
-        return new Expr.Grouping(expr.expression.accept(this));
+        return switch (expr.expression) {
+            case Expr.Literal literalExpr -> literalExpr;
+            // Recursively unwrap nested groupings
+            case Expr.Grouping groupingExpr -> visitGroupingExpr(groupingExpr);
+            default -> new Expr.Grouping(expr.expression.accept(this));
+        };
     }
 
     @Override
