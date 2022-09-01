@@ -3,10 +3,9 @@ package com.craftinginterpreters.lox;
 import org.jetbrains.annotations.Nullable;
 import proguard.classfile.ClassPool;
 import proguard.classfile.util.ClassPoolClassLoader;
-import proguard.io.*;
 import proguard.io.util.IOUtil;
 
-import java.io.*;
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -14,7 +13,6 @@ import java.nio.file.Paths;
 import static com.craftinginterpreters.lox.Compiler.LOX_MAIN_CLASS;
 import static com.craftinginterpreters.lox.Lox.hadError;
 import static com.craftinginterpreters.lox.Lox.hadRuntimeError;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class Main {
     public static void main(String[] args) throws IOException {
