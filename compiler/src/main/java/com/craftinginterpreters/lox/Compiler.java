@@ -55,7 +55,6 @@ public class Compiler {
     private final ClassPool programClassPool = new ClassPool();
     private final CompilerResolver resolver = new CompilerResolver();
     private final VariableAllocator allocator = new VariableAllocator(resolver);
-    private MainFunction mainFunction;
 
 
     public @Nullable ClassPool compile(List<Stmt> program) {
@@ -72,7 +71,7 @@ public class Compiler {
             lox.LoxMethod.class
         );
 
-        mainFunction = MainFunction.fromStatements(program);
+        var mainFunction = MainFunction.fromStatements(program);
 
         resolver.resolve(mainFunction);
 
@@ -480,7 +479,7 @@ public class Compiler {
         public LoxComposer visitPrintStmt(Stmt.Print stmt) {
             return composer
                 .also(composer -> stmt.expression.accept(this))
-                .outline(programClassPool, resolver.javaClassName(mainFunction), "println", "(Ljava/lang/Object;)V", composer -> {
+                .outline(programClassPool, LOX_MAIN_CLASS, "println", "(Ljava/lang/Object;)V", composer -> {
                     var nonNull = composer.createLabel();
                     var isObject = composer.createLabel();
                     var end = composer.createLabel();
@@ -644,7 +643,7 @@ public class Compiler {
                     .iconst_1()
                     .ixor()
                     .box("java/lang/Boolean");
-                case PLUS -> composer.outline(programClassPool, resolver.javaClassName(mainFunction), "add", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", outlineComposer -> {
+                case PLUS -> composer.outline(programClassPool, LOX_MAIN_CLASS, "add", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", outlineComposer -> {
                     var composer = new LoxComposer(outlineComposer, programClassPool, resolver, allocator);
                     var bothDouble = composer.createLabel();
                     var checkAbIsString = composer.createLabel();
@@ -955,7 +954,6 @@ public class Compiler {
 
     public static class MainFunction extends Stmt.Function {
 
-        private static MainFunction INSTANCE;
         private static final ArrayList<NativeFunction> nativeFunctions = new ArrayList<>();
 
         static {
@@ -971,7 +969,7 @@ public class Compiler {
             }
         }
 
-        MainFunction(List<Stmt> body) {
+        private MainFunction(List<Stmt> body) {
             super(
                 new Token(FUN, LOX_MAIN_CLASS, null, 0),
                 Collections.emptyList(),
@@ -979,7 +977,7 @@ public class Compiler {
             );
         }
 
-        public static MainFunction fromStatements(List<Stmt> body) {
+        static MainFunction fromStatements(List<Stmt> body) {
             return new MainFunction(body);
         }
     }
