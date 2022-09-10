@@ -81,7 +81,7 @@ public class Compiler {
             lox.LoxMethod.class
         );
 
-        var mainFunction = MainFunction.fromStatements(program);
+        var mainFunction = new MainFunction(program);
 
         resolver.resolve(mainFunction);
 
@@ -92,7 +92,7 @@ public class Compiler {
         var mainMethodClass = new FunctionCompiler().compile(mainFunction);
 
         new ClassBuilder(mainMethodClass)
-            .addMethod(PUBLIC | STATIC, "main", "([Ljava/lang/String;)V", 65_536, composer -> {
+            .addMethod(PUBLIC | STATIC, "main", "([Ljava/lang/String;)V", 65_535, composer -> {
                 LoxComposer loxComposer = new LoxComposer(composer, programClassPool, resolver, allocator);
                 var error = loxComposer.createLabel();
                 //noinspection unchecked
@@ -981,10 +981,6 @@ public class Compiler {
                 Collections.emptyList(),
                 Stream.concat(nativeFunctions.stream(), body.stream()).toList()
             );
-        }
-
-        static MainFunction fromStatements(List<Stmt> body) {
-            return new MainFunction(body);
         }
     }
 }
