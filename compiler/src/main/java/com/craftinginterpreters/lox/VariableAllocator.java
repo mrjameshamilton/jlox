@@ -2,7 +2,13 @@ package com.craftinginterpreters.lox;
 
 import com.craftinginterpreters.lox.CompilerResolver.VarDef;
 
-import java.util.*;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Stack;
+import java.util.WeakHashMap;
 
 public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void> {
 
@@ -15,6 +21,22 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
 
     public VariableAllocator(CompilerResolver resolver) {
         this.resolver = resolver;
+    }
+
+    /**
+     * Returns the slot number for the specified variable in the specified
+     * function.
+     */
+    public int slot(Stmt.Function function, VarDef varDef) {
+        var slot = slots(function)
+                .entrySet()
+                .stream()
+                .filter(it -> it.getKey().equals(varDef))
+                //.filter(it -> it.getKey().isUsed()) // TODO
+                .map(Map.Entry::getValue)
+                .findFirst();
+
+        return slot.orElseThrow().number;
     }
 
     public void resolve(Stmt.Function function) {
@@ -37,8 +59,12 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
         beginScope(function);
         for (Token param : function.params) declare(param);
         // Assign slots for variables captured by this function.
-        resolver.captured(function).stream().filter(it -> !it.isGlobal()).forEach(varDef -> slots(function).put(varDef, new Slot(function, nextSlotNumber(function), true))
-        );
+        resolver.captured(function)
+                .stream()
+                .filter(it -> !it.isGlobal())
+                .forEach(
+                    varDef -> slots(function).put(varDef, new Slot(function, nextSlotNumber(function), true))
+                );
         resolve(function.body);
         endScope(function);
     }
@@ -89,42 +115,6 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
         if (DEBUG) System.out.println("assigning " + varDef + " to slot " + slot + " in " + currentFunction.name.lexeme);
     }
 
-    private Map<VarDef, Slot> slots(Stmt.Function function) {
-        return slots.computeIfAbsent(function, k -> new WeakHashMap<>());
-    }
-
-    int slot(Stmt.Function function, VarDef varDef) {
-        var slot = slots(function)
-                .entrySet()
-                .stream()
-                .filter(it -> it.getKey().equals(varDef))
-                //.filter(it -> it.getKey().isUsed()) // TODO
-                .map(Map.Entry::getValue)
-                .findFirst();
-
-        return slot.orElseThrow().number;
-    }
-
-    private int nextSlotNumber(Stmt.Function function) {
-        Map<VarDef, Slot> slots = slots(function);
-        if (slots != null) {
-            var firstFreeSlot = slots
-                .entrySet()
-                .stream()
-                .filter(entry -> !entry.getValue().isUsed)
-                .min(Comparator.comparingInt(it -> it.getValue().number));
-            if (firstFreeSlot.isPresent()) {
-                firstFreeSlot.get().getValue().isUsed = true;
-                return firstFreeSlot.get().getValue().number;
-            } else {
-                Optional<Slot> maxSlot = slots.values()
-                                              .stream()
-                                              .max(Comparator.comparingInt(it -> it.number));
-                return maxSlot.map(slot -> slot.number).orElse(0) + 1;
-            }
-        }
-        return 0;
-    }
     @Override
     public Void visitAssignExpr(Expr.Assign expr) {
         resolve(expr.value);
@@ -264,7 +254,34 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
         resolve(stmt.body);
         return null;
     }
+
+    private Map<VarDef, Slot> slots(Stmt.Function function) {
+        return slots.computeIfAbsent(function, k -> new WeakHashMap<>());
+    }
+
+    private int nextSlotNumber(Stmt.Function function) {
+        Map<VarDef, Slot> slots = slots(function);
+        if (slots != null) {
+            var firstFreeSlot = slots
+                .entrySet()
+                .stream()
+                .filter(entry -> !entry.getValue().isUsed)
+                .min(Comparator.comparingInt(it -> it.getValue().number));
+            if (firstFreeSlot.isPresent()) {
+                firstFreeSlot.get().getValue().isUsed = true;
+                return firstFreeSlot.get().getValue().number;
+            } else {
+                Optional<Slot> maxSlot = slots.values()
+                                              .stream()
+                                              .max(Comparator.comparingInt(it -> it.number));
+                return maxSlot.map(slot -> slot.number).orElse(0) + 1;
+            }
+        }
+        return 0;
+    }
+
     private static class Slot {
+
         public final int number;
         private final Stmt.Function function;
         private boolean isUsed;
