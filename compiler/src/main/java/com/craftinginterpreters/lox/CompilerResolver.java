@@ -1,6 +1,5 @@
 package com.craftinginterpreters.lox;
 
-import com.craftinginterpreters.lox.Compiler.MainFunction;
 import com.craftinginterpreters.lox.Stmt.Function;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,6 +16,7 @@ import java.util.WeakHashMap;
 import java.util.stream.Collectors;
 
 import static com.craftinginterpreters.lox.Lox.error;
+import static com.craftinginterpreters.lox.LoxConstants.LOX_MAIN_CLASS;
 import static com.craftinginterpreters.lox.TokenType.SUPER;
 import static com.craftinginterpreters.lox.TokenType.THIS;
 
@@ -24,7 +24,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     public static boolean DEBUG = System.getProperty("jlox.resolver.debug") != null;
 
     private final Map<Token, VarDef> variables = new HashMap<>();
-    private final Map<Expr, VarDef> varUse = new WeakHashMap<>();
+    private final Map<Token, VarDef> varUse = new WeakHashMap<>();
     private final Stack<Map<VarDef, Boolean>> scopes = new Stack<>();
     private final Stack<Function> functionStack = new Stack<>();
     private final Map<Token, Set<VarDef>> captured = new HashMap<>();
@@ -32,7 +32,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     private final Map<Token, String> javaFieldNames = new HashMap<>();
     private final Set<UnresolvedLocal> unresolved = new HashSet<>();
 
-    public void resolve(MainFunction main) {
+    public void resolve(Function main) {
         resolveFunction(main);
         main.accept(new SelfReferencingVarInitializer());
 
@@ -88,12 +88,12 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
                 int depth = functionStack.size() - functionStack.indexOf(varDef.get().function) - 1;
                 if (depth != 0) {
                     if (varAccess instanceof Expr.This || varAccess instanceof Expr.Super) {
-                        varDef.get().captureDepth.put(functionStack.peek().name, depth - 1);
+                        captureThisOrSuper(functionStack.peek(), varDef.get(), depth - 1);
                     } else {
                         capture(functionStack.peek(), varDef.get(), depth - 1);
                     }
                 }
-                varUse.put(varAccess, varDef.get());
+                varUse.put(name, varDef.get());
                 if (DEBUG) System.out.println(name.lexeme + "@line" + name.line + " -> " + varDef.get() + "@line" + varDef.get().token().line);
                 return;
             }
@@ -137,8 +137,8 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             // GlobalVar is not the same as global scope -
             // there can be multiple scopes in the top-level function.
             // GlobalVar means that the var is declared in any scope that
-            // is in the top-level function (mainFunction).
-            boolean isGlobalVar = currentFunction instanceof MainFunction;
+            // is in the top-level function.
+            boolean isGlobalVar = javaClassName(currentFunction).equals(LOX_MAIN_CLASS);
             varDef = new VarDef(name, currentFunction, isGlobalVar);
         }
 
@@ -148,7 +148,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         if (isGlobalScope) {
             var resolved = new HashSet<UnresolvedLocal>();
             unresolved.stream().filter(it -> it.name.lexeme.equals(name.lexeme)).forEach(it -> {
-                varUse.put(it.varAccess, varDef);
+                varUse.put(it.name, varDef);
                 capture(it.function, varDef, it.depth);
                 resolved.add(it);
                 varDef.isLateInit = true;
@@ -500,6 +500,10 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         return javaFieldNames.get(function.name);
     }
 
+    private void captureThisOrSuper(Function function, VarDef thisOrSuperDef, int depth) {
+        thisOrSuperDef.captureDepth.put(function.name, depth);
+    }
+
     private void capture(Function function, VarDef varDef, int depth) {
         var captured = captured(function);
         if (!captured.contains(varDef)) {
@@ -517,7 +521,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     public Set<VarDef> variables(Function function) {
         return variables.values()
                         .stream()
-                        .filter(it -> it.function.equals(function))
+                        .filter(it -> it.function.name.equals(function.name))
                         .collect(Collectors.toSet());
     }
 
@@ -533,6 +537,12 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     }
 
     public Optional<VarDef> varDef(Expr varAccess) {
-        return Optional.ofNullable(varUse.get(varAccess));
+        return switch (varAccess) {
+            case Expr.Variable v ->  Optional.ofNullable(varUse.get(v.name));
+            case Expr.Assign v -> Optional.ofNullable(varUse.get(v.name));
+            case Expr.Super v -> Optional.ofNullable(varUse.get(v.keyword));
+            case Expr.This v -> Optional.ofNullable(varUse.get(v.keyword));
+            default -> throw new IllegalArgumentException("Invalid varAccess: " + varAccess);
+        };
     }
 }

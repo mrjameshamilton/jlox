@@ -33,8 +33,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.craftinginterpreters.lox.Lox.hadError;
-import static com.craftinginterpreters.lox.Lox.hadRuntimeError;
+import static com.craftinginterpreters.lox.Lox.*;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_CALLABLE;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_CAPTURED;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_CLASS;
@@ -46,6 +45,7 @@ import static com.craftinginterpreters.lox.LoxConstants.LOX_METHOD;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_NATIVE;
 import static com.craftinginterpreters.lox.TokenType.FUN;
 import static com.craftinginterpreters.lox.TokenType.IDENTIFIER;
+import static java.util.Collections.emptyList;
 import static proguard.classfile.AccessConstants.FINAL;
 import static proguard.classfile.AccessConstants.PRIVATE;
 import static proguard.classfile.AccessConstants.PROTECTED;
@@ -78,7 +78,11 @@ public class Compiler {
             lox.LoxMethod.class
         );
 
-        var mainFunction = new MainFunction(program);
+        var mainFunction = new Stmt.Function(
+            new Token(FUN, LOX_MAIN_CLASS, null, 0),
+            emptyList(),
+            prependNative(program)
+        );
 
         resolver.resolve(mainFunction);
 
@@ -257,7 +261,7 @@ public class Compiler {
         }
 
         private ProgramClass createFunction(Stmt.Class classStmt, Stmt.Function function) {
-            boolean isMain = function instanceof MainFunction;
+            boolean isMain = resolver.javaClassName(function).equals(LOX_MAIN_CLASS);
             var classBuilder = new ClassBuilder(
                 CLASS_VERSION_1_8,
                 PUBLIC,
@@ -949,35 +953,24 @@ public class Compiler {
     }
 
 
-    private static class NativeFunction extends Stmt.Function {
+    public static class NativeFunction extends Stmt.Function {
         NativeFunction(Token name, List<Token> params) {
-            super(name, params, Collections.emptyList());
+            super(name, params, emptyList());
         }
     }
 
-    public static class MainFunction extends Stmt.Function {
-
-        private static final ArrayList<NativeFunction> nativeFunctions = new ArrayList<>();
-
-        static {
-            for (Method declaredMethod : LoxNative.class.getDeclaredMethods()) {
-                var list = new ArrayList<Token>();
-                for (int j = 0, parametersLength = declaredMethod.getParameters().length; j < parametersLength; j++) {
-                    list.add(new Token(IDENTIFIER, j + "", null, 0));
-                }
-                nativeFunctions.add(new NativeFunction(
-                    new Token(IDENTIFIER, declaredMethod.getName(), null, 0),
-                    list
-                ));
+    private List<Stmt> prependNative(List<Stmt> stmts) {
+        var nativeFunctions = new ArrayList<Stmt>();
+        for (Method declaredMethod : LoxNative.class.getDeclaredMethods()) {
+            var list = new ArrayList<Token>();
+            for (int j = 0, parametersLength = declaredMethod.getParameters().length; j < parametersLength; j++) {
+                list.add(new Token(IDENTIFIER, j + "", null, 0));
             }
+            nativeFunctions.add(new NativeFunction(
+                new Token(IDENTIFIER, declaredMethod.getName(), null, 0),
+                list
+            ));
         }
-
-        private MainFunction(List<Stmt> body) {
-            super(
-                new Token(FUN, LOX_MAIN_CLASS, null, 0),
-                Collections.emptyList(),
-                Stream.concat(nativeFunctions.stream(), body.stream()).toList()
-            );
-        }
+        return Stream.concat(nativeFunctions.stream(), stmts.stream()).toList();
     }
 }
