@@ -10,7 +10,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
-import static com.craftinginterpreters.lox.Compiler.LOX_MAIN_CLASS;
+import static com.craftinginterpreters.lox.LoxConstants.LOX_MAIN_CLASS;
 import static com.craftinginterpreters.lox.Lox.hadError;
 import static com.craftinginterpreters.lox.Lox.hadRuntimeError;
 

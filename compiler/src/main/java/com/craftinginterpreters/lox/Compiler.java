@@ -49,18 +49,6 @@ import static proguard.classfile.util.ClassUtil.internalClassName;
 
 public class Compiler {
 
-    static final String LOX_CALLABLE = internalClassName(lox.LoxCallable.class.getName());
-    private static final String LOX_FUNCTION = internalClassName(lox.LoxFunction.class.getName());
-    private static final String LOX_METHOD = internalClassName(lox.LoxMethod.class.getName());
-    private static final String LOX_CLASS = internalClassName(lox.LoxClass.class.getName());
-    static final String LOX_INSTANCE = internalClassName(lox.LoxInstance.class.getName());
-    private static final String LOX_INVOKER = internalClassName(lox.LoxInvoker.class.getName());
-    private static final String LOX_NATIVE = internalClassName(LoxNative.class.getName());
-    static final String LOX_EXCEPTION = internalClassName(lox.LoxException.class.getName());
-    static final String LOX_CAPTURED = internalClassName(lox.LoxCaptured.class.getName());
-
-    static final String LOX_MAIN_CLASS = "Main";
-
     private static final boolean DEBUG = System.getProperty("jlox.compiler.debug") != null;
     private final ClassPool programClassPool = new ClassPool();
     private final CompilerResolver resolver = new CompilerResolver();
@@ -101,9 +89,9 @@ public class Compiler {
                         .new_(it.getTargetClass().getName())
                         .dup()
                         .aconst_null()
-                        .invokespecial(it.getTargetClass().getName(), "<init>", "(L" + LOX_CALLABLE + ";)V")
+                        .invokespecial(it.getTargetClass().getName(), "<init>", "(L" + LoxConstants.LOX_CALLABLE + ";)V")
                         .aconst_null()
-                        .invokeinterface(LOX_CALLABLE, "invoke", "([Ljava/lang/Object;)Ljava/lang/Object;")
+                        .invokeinterface(LoxConstants.LOX_CALLABLE, "invoke", "([Ljava/lang/Object;)Ljava/lang/Object;")
                         .pop()
                         .return_(),
                      __ -> __
@@ -178,7 +166,7 @@ public class Compiler {
             if (functionStmt instanceof NativeFunction) {
                 for (int i = 0; i < functionStmt.params.size(); i++) composer.aload(i);
                 composer
-                    .invokestatic(LOX_NATIVE, functionStmt.name.lexeme, "(" + "Ljava/lang/Object;".repeat(functionStmt.params.size()) + ")Ljava/lang/Object;")
+                    .invokestatic(LoxConstants.LOX_NATIVE, functionStmt.name.lexeme, "(" + "Ljava/lang/Object;".repeat(functionStmt.params.size()) + ")Ljava/lang/Object;")
                     .areturn();
             } else {
                 if (!functionStmt.params.isEmpty()) composer
@@ -190,7 +178,7 @@ public class Compiler {
 
                 resolver.captured(functionStmt).stream().filter(it -> !it.isGlobal()).forEach(captured -> composer
                     .aload_0()
-                    .getfield(composer.getTargetClass().getName(), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
+                    .getfield(composer.getTargetClass().getName(), captured.getJavaFieldName(), "L" + LoxConstants.LOX_CAPTURED + ";")
                     .astore(allocator.slot(functionStmt, captured))
                 );
 
@@ -202,7 +190,7 @@ public class Compiler {
                     if (classStmt != null && functionStmt.name.lexeme.equals("init")) {
                         composer
                             .aload_0()
-                            .invokevirtual(LOX_METHOD, "getReceiver", "()L" + LOX_INSTANCE + ";")
+                            .invokevirtual(LoxConstants.LOX_METHOD, "getReceiver", "()L" + LoxConstants.LOX_INSTANCE + ";")
                             .areturn();
                     } else {
                         composer
@@ -230,7 +218,7 @@ public class Compiler {
                 .dup()
                 .aload_0()
                 .line(function.name.line)
-                .invokespecial(functionClazz.getName(), "<init>", "(L" + (classStmt == null ? LOX_CALLABLE : LOX_CLASS) + ";)V");
+                .invokespecial(functionClazz.getName(), "<init>", "(L" + (classStmt == null ? LoxConstants.LOX_CALLABLE : LoxConstants.LOX_CLASS) + ";)V");
 
             if (!resolver.captured(function).isEmpty()) composer.dup();
 
@@ -241,17 +229,17 @@ public class Compiler {
                     if (captured.isGlobal()) {
                         composer
                                 .dup()
-                                .getstatic(LOX_MAIN_CLASS, captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
-                                .putfield(resolver.javaClassName(function), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+                                .getstatic(LoxConstants.LOX_MAIN_CLASS, captured.getJavaFieldName(), "L" + LoxConstants.LOX_CAPTURED + ";")
+                                .putfield(resolver.javaClassName(function), captured.getJavaFieldName(), "L" + LoxConstants.LOX_CAPTURED + ";");
                     } else {
                         composer
                                 .dup()
                                 .aload_0()
                                 .iconst(captured.distanceTo(function))
-                                .invokeinterface(LOX_CALLABLE, "getEnclosing", "(I)L" + LOX_CALLABLE + ";")
+                                .invokeinterface(LoxConstants.LOX_CALLABLE, "getEnclosing", "(I)L" + LoxConstants.LOX_CALLABLE + ";")
                                 .checkcast(resolver.javaClassName(captured.function()))
-                                .getfield(resolver.javaClassName(captured.function()), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
-                                .putfield(resolver.javaClassName(function), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+                                .getfield(resolver.javaClassName(captured.function()), captured.getJavaFieldName(), "L" + LoxConstants.LOX_CAPTURED + ";")
+                                .putfield(resolver.javaClassName(function), captured.getJavaFieldName(), "L" + LoxConstants.LOX_CAPTURED + ";");
                     }
                 });
                 composer.pop();
@@ -265,7 +253,7 @@ public class Compiler {
                 CLASS_VERSION_1_8,
                 PUBLIC,
                 resolver.javaClassName(function),
-                classStmt != null ? LOX_METHOD : LOX_FUNCTION
+                classStmt != null ? LoxConstants.LOX_METHOD : LoxConstants.LOX_FUNCTION
             )
             .addMethod(PUBLIC, "getName", "()Ljava/lang/String;", 10, composer -> composer
                 .ldc(function.name.lexeme)
@@ -285,23 +273,23 @@ public class Compiler {
                             addField(
                                     PUBLIC | STATIC,
                                     global.getJavaFieldName(),
-                                    global.isCaptured() ? "L" + LOX_CAPTURED + ";" : "Ljava/lang/Object;")
+                                    global.isCaptured() ? "L" + LoxConstants.LOX_CAPTURED + ";" : "Ljava/lang/Object;")
                     );
             } else {
                 Stream.concat(resolver.captured(function).stream(), resolver.variables(function).stream().filter(VarDef::isCaptured))
                     .distinct()
                     .forEach(captured -> classBuilder
-                        .addField(PUBLIC, captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
+                        .addField(PUBLIC, captured.getJavaFieldName(), "L" + LoxConstants.LOX_CAPTURED + ";")
                     );
             }
 
             classBuilder
-                .addMethod(PUBLIC, "<init>", "(L" + (classStmt == null ? LOX_CALLABLE : LOX_CLASS) + ";)V", 100, composer -> {
+                .addMethod(PUBLIC, "<init>", "(L" + (classStmt == null ? LoxConstants.LOX_CALLABLE : LoxConstants.LOX_CLASS) + ";)V", 100, composer -> {
                     var loxComposer = new LoxComposer(composer, programClassPool, resolver, allocator);
                     loxComposer
                         .aload_0()
                         .aload_1()
-                        .invokespecial(classStmt == null ? LOX_FUNCTION : LOX_METHOD, "<init>", "(L" + (classStmt == null ? LOX_CALLABLE : LOX_CLASS) + ";)V");
+                        .invokespecial(classStmt == null ? LoxConstants.LOX_FUNCTION : LoxConstants.LOX_METHOD, "<init>", "(L" + (classStmt == null ? LoxConstants.LOX_CALLABLE : LoxConstants.LOX_CLASS) + ";)V");
 
                     var lateInitVars = resolver.variables(function)
                         .stream()
@@ -317,11 +305,11 @@ public class Compiler {
                                 .box(varDef);
                             if (isMain) {
                                 loxComposer
-                                    .putstatic(LOX_MAIN_CLASS, varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+                                    .putstatic(LoxConstants.LOX_MAIN_CLASS, varDef.getJavaFieldName(), "L" + LoxConstants.LOX_CAPTURED + ";");
                             } else {
                                 loxComposer
                                     .aload_0()
-                                    .putfield(loxComposer.getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+                                    .putfield(loxComposer.getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LoxConstants.LOX_CAPTURED + ";");
                             }
                         });
                     }
@@ -355,47 +343,47 @@ public class Compiler {
                 CLASS_VERSION_1_8,
                 PUBLIC,
                 resolver.javaClassName(classStmt),
-                LOX_CLASS
+                LoxConstants.LOX_CLASS
             );
 
             classBuilder.addMethod(PROTECTED, "initialize", "()V", 100, composer -> {
                 composer = new LoxComposer(composer, programClassPool, resolver, allocator);
                 for (var method : classStmt.methods) {
-                    classBuilder.addField(PRIVATE | FINAL, resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
+                    classBuilder.addField(PRIVATE | FINAL, resolver.javaFieldName(method), "L" + LoxConstants.LOX_METHOD + ";");
                     compile((LoxComposer) composer, classStmt, method, loxComposer -> loxComposer
                         .dup()
                         .aload_0()
                         .swap()
-                        .putfield(loxComposer.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";")
+                        .putfield(loxComposer.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LoxConstants.LOX_METHOD + ";")
                     );
                 }
                 composer.return_();
             });
 
             if (classStmt.superclass != null) {
-                classBuilder.addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V", 100, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
+                classBuilder.addMethod(PUBLIC, "<init>", "(L" + LoxConstants.LOX_CALLABLE + ";L" + LoxConstants.LOX_CLASS + ";)V", 100, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
                     .aload_0()
                     .aload_1()
                     .aload_2()
-                    .invokespecial(LOX_CLASS, "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V")
+                    .invokespecial(LoxConstants.LOX_CLASS, "<init>", "(L" + LoxConstants.LOX_CALLABLE + ";L" + LoxConstants.LOX_CLASS + ";)V")
                     .return_());
             } else {
-                classBuilder.addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";)V", 100, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
+                classBuilder.addMethod(PUBLIC, "<init>", "(L" + LoxConstants.LOX_CALLABLE + ";)V", 100, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
                     .aload_0()
                     .aload_1()
-                    .invokespecial(LOX_CLASS, "<init>", "(L" + LOX_CALLABLE + ";)V")
+                    .invokespecial(LoxConstants.LOX_CLASS, "<init>", "(L" + LoxConstants.LOX_CALLABLE + ";)V")
                     .return_());
             }
 
             classBuilder
-                    .addMethod(PUBLIC, "findMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";", 500, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
+                    .addMethod(PUBLIC, "findMethod", "(Ljava/lang/String;)L" + LoxConstants.LOX_METHOD + ";", 500, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
                         .aload_1()
                         .switch_(2, switchBuilder -> {
                             classStmt.methods.forEach(method -> switchBuilder.case_(
                                 method.name.lexeme,
                                 caseComposer -> caseComposer
                                     .aload_0()
-                                    .getfield(classBuilder.getProgramClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";")
+                                    .getfield(classBuilder.getProgramClass().getName(), resolver.javaFieldName(method), "L" + LoxConstants.LOX_METHOD + ";")
                                     .areturn()
                             ));
                             //noinspection SwitchStatementWithTooFewBranches
@@ -405,9 +393,9 @@ public class Compiler {
                                     .areturn();
                                 default -> defaultComposer
                                     .aload_0()
-                                    .invokevirtual(classBuilder.getProgramClass().getName(), "getSuperClass", "()L" + LOX_CLASS + ";")
+                                    .invokevirtual(classBuilder.getProgramClass().getName(), "getSuperClass", "()L" + LoxConstants.LOX_CLASS + ";")
                                     .aload_1()
-                                    .invokevirtual(LOX_CLASS, "findMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";")
+                                    .invokevirtual(LoxConstants.LOX_CLASS, "findMethod", "(Ljava/lang/String;)L" + LoxConstants.LOX_METHOD + ";")
                                     .areturn();
                             });
                         }))
@@ -441,16 +429,16 @@ public class Compiler {
                 composer
                     .line(classStmt.superclass.name.line)
                     .dup()
-                    .instanceof_(LOX_CLASS)
+                    .instanceof_(LoxConstants.LOX_CLASS)
                     .ifne(isClass)
                     .pop()
                     .loxthrow("Superclass must be a class.")
 
                     .label(isClass)
-                    .checkcast(LOX_CLASS)
-                    .invokespecial(clazz.getName(), "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V");
+                    .checkcast(LoxConstants.LOX_CLASS)
+                    .invokespecial(clazz.getName(), "<init>", "(L" + LoxConstants.LOX_CALLABLE + ";L" + LoxConstants.LOX_CLASS + ";)V");
             } else {
-                composer.invokespecial(clazz.getName(), "<init>", "(L" + LOX_CALLABLE + ";)V");
+                composer.invokespecial(clazz.getName(), "<init>", "(L" + LoxConstants.LOX_CALLABLE + ";)V");
             }
 
             return composer.declare(currentFunction, classStmt.name);
@@ -488,7 +476,7 @@ public class Compiler {
         public LoxComposer visitPrintStmt(Stmt.Print stmt) {
             return composer
                 .also(composer -> stmt.expression.accept(this))
-                .outline(programClassPool, LOX_MAIN_CLASS, "println", "(Ljava/lang/Object;)V", composer -> {
+                .outline(programClassPool, LoxConstants.LOX_MAIN_CLASS, "println", "(Ljava/lang/Object;)V", composer -> {
                     var nonNull = composer.createLabel();
                     var isObject = composer.createLabel();
                     var end = composer.createLabel();
@@ -559,7 +547,7 @@ public class Compiler {
             else if (currentClass != null && currentFunction.name.lexeme.equals("init"))
                 return composer
                         .aload_0()
-                        .invokevirtual(LOX_METHOD, "getReceiver", "()L" + LOX_INSTANCE + ";")
+                        .invokevirtual(LoxConstants.LOX_METHOD, "getReceiver", "()L" + LoxConstants.LOX_INSTANCE + ";")
                         .line(stmt.keyword.line)
                         .areturn();
             else
@@ -652,7 +640,7 @@ public class Compiler {
                     .iconst_1()
                     .ixor()
                     .box("java/lang/Boolean");
-                case PLUS -> composer.outline(programClassPool, LOX_MAIN_CLASS, "add", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", outlineComposer -> {
+                case PLUS -> composer.outline(programClassPool, LoxConstants.LOX_MAIN_CLASS, "add", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", outlineComposer -> {
                     var composer = new LoxComposer(outlineComposer, programClassPool, resolver, allocator);
                     var bothDouble = composer.createLabel();
                     var checkAbIsString = composer.createLabel();
@@ -771,18 +759,18 @@ public class Compiler {
                 .ldc(expr.name.lexeme)
                 .also(composer -> expr.object.accept(this))
                 .line(expr.name.line)
-                .outline(programClassPool, LOX_MAIN_CLASS, "get", "(Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;", composer -> {
+                .outline(programClassPool, LoxConstants.LOX_MAIN_CLASS, "get", "(Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;", composer -> {
                    var notInstance = composer.createLabel();
                    var end = composer.createLabel();
                    var loxComposer = new LoxComposer(composer, programClassPool, resolver, allocator);
 
                    loxComposer
                        .dup()
-                       .instanceof_(LOX_INSTANCE)
+                       .instanceof_(LoxConstants.LOX_INSTANCE)
                        .ifeq(notInstance)
-                       .checkcast(LOX_INSTANCE)
+                       .checkcast(LoxConstants.LOX_INSTANCE)
                        .swap()
-                       .invokevirtual(LOX_INSTANCE, "get", "(Ljava/lang/String;)Ljava/lang/Object;")
+                       .invokevirtual(LoxConstants.LOX_INSTANCE, "get", "(Ljava/lang/String;)Ljava/lang/Object;")
                        .goto_(end)
 
                        .label(notInstance)
@@ -836,14 +824,14 @@ public class Compiler {
             var end = composer.createLabel();
             return expr.object.accept(this)
                     .dup()
-                    .instanceof_(LOX_INSTANCE)
+                    .instanceof_(LoxConstants.LOX_INSTANCE)
                     .ifeq(notInstance)
-                    .checkcast(LOX_INSTANCE)
+                    .checkcast(LoxConstants.LOX_INSTANCE)
                     .line(expr.name.line)
                     .ldc(expr.name.lexeme)
                     .also(composer1 -> expr.value.accept(this))
                     .dup_x2()
-                    .invokevirtual(LOX_INSTANCE, "set", "(Ljava/lang/String;Ljava/lang/Object;)V")
+                    .invokevirtual(LoxConstants.LOX_INSTANCE, "set", "(Ljava/lang/String;Ljava/lang/Object;)V")
                     .goto_(end)
 
                     .label(notInstance)
@@ -860,18 +848,18 @@ public class Compiler {
                 // First get the closest method
                 .aload_0()
                 .iconst(resolver.varDef(expr).orElseThrow().distanceTo(currentFunction))
-                .invokeinterface(LOX_CALLABLE, "getEnclosing", "(I)L" + LOX_CALLABLE +";")
-                .checkcast(LOX_METHOD)
+                .invokeinterface(LoxConstants.LOX_CALLABLE, "getEnclosing", "(I)L" + LoxConstants.LOX_CALLABLE +";")
+                .checkcast(LoxConstants.LOX_METHOD)
                 .dup() // thismethod, thismethod
                 // Then get the class in which the method is defined
-                .invokevirtual(LOX_METHOD, "getLoxClass", "()L" + LOX_CLASS + ";")
+                .invokevirtual(LoxConstants.LOX_METHOD, "getLoxClass", "()L" + LoxConstants.LOX_CLASS + ";")
                 .ldc(expr.method.lexeme) // thismethod, class, fieldname
                 // Then find the super method
-                .invokevirtual(LOX_CLASS, "findSuperMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";") // thismethod, supermethod
+                .invokevirtual(LoxConstants.LOX_CLASS, "findSuperMethod", "(Ljava/lang/String;)L" + LoxConstants.LOX_METHOD + ";") // thismethod, supermethod
                 .swap() // supermethod, thismethod
-                .invokevirtual(LOX_METHOD, "getReceiver", "()L" + LOX_INSTANCE + ";") // supermethod, thisinstance
+                .invokevirtual(LoxConstants.LOX_METHOD, "getReceiver", "()L" + LoxConstants.LOX_INSTANCE + ";") // supermethod, thisinstance
                 // Finally, bind the instance to the super method
-                .invokevirtual(LOX_METHOD, "bind", "(L" + LOX_INSTANCE + ";)L" + LOX_METHOD + ";"); // []
+                .invokevirtual(LoxConstants.LOX_METHOD, "bind", "(L" + LoxConstants.LOX_INSTANCE + ";)L" + LoxConstants.LOX_METHOD + ";"); // []
         }
 
         @Override
@@ -879,9 +867,9 @@ public class Compiler {
             return composer
                     .aload_0()
                     .iconst(resolver.varDef(expr).orElseThrow().distanceTo(currentFunction))
-                    .invokeinterface(LOX_CALLABLE, "getEnclosing", "(I)L" + LOX_CALLABLE + ";")
-                    .checkcast(LOX_METHOD)
-                    .invokevirtual(LOX_METHOD, "getReceiver", "()L" + LOX_INSTANCE + ";");
+                    .invokeinterface(LoxConstants.LOX_CALLABLE, "getEnclosing", "(I)L" + LoxConstants.LOX_CALLABLE + ";")
+                    .checkcast(LoxConstants.LOX_METHOD)
+                    .invokevirtual(LoxConstants.LOX_METHOD, "getReceiver", "()L" + LoxConstants.LOX_INSTANCE + ";");
         }
 
         @Override
@@ -926,7 +914,7 @@ public class Compiler {
             constantPoolEditor.addMethodHandleConstant(
                     REF_INVOKE_STATIC,
                     constantPoolEditor.addMethodrefConstant(
-                        LOX_INVOKER,
+                        LoxConstants.LOX_INVOKER,
                         "bootstrap",
                         "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;",
                         null,
@@ -942,7 +930,7 @@ public class Compiler {
 
     private static void addClass(ClassPool classPool, Class<?>...classes) {
         for (var clazz : classes) {
-            var is = lox.LoxCallable.class.getClassLoader().getResourceAsStream(internalClassName(clazz.getName()) + ".class");
+            var is = Compiler.class.getClassLoader().getResourceAsStream(internalClassName(clazz.getName()) + ".class");
             assert is != null;
             var classReader = new ProgramClassReader(new DataInputStream(is));
             var programClass = new ProgramClass();
@@ -977,7 +965,7 @@ public class Compiler {
 
         private MainFunction(List<Stmt> body) {
             super(
-                new Token(FUN, LOX_MAIN_CLASS, null, 0),
+                new Token(FUN, LoxConstants.LOX_MAIN_CLASS, null, 0),
                 Collections.emptyList(),
                 Stream.concat(nativeFunctions.stream(), body.stream()).toList()
             );

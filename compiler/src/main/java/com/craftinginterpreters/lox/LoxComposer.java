@@ -3,17 +3,12 @@ package com.craftinginterpreters.lox;
 import com.craftinginterpreters.lox.CompilerResolver.VarDef;
 import proguard.classfile.ClassPool;
 import proguard.classfile.editor.CompactCodeAttributeComposer;
-import proguard.classfile.util.ClassUtil;
 
 import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
-import static com.craftinginterpreters.lox.Compiler.*;
+import static com.craftinginterpreters.lox.LoxConstants.*;
 import static proguard.classfile.util.ClassUtil.internalPrimitiveTypeFromNumericClassName;
 
 public class LoxComposer extends Composer<LoxComposer> {
