@@ -37,8 +37,7 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
         beginScope(function);
         for (Token param : function.params) declare(param);
         // Assign slots for variables captured by this function.
-        resolver.captured(function).stream().filter(it -> !it.isGlobal()).forEach(varDef ->
-            slots(function, varDef, new Slot(function, nextSlotNumber(function), true))
+        resolver.captured(function).stream().filter(it -> !it.isGlobal()).forEach(varDef -> slots(function).put(varDef, new Slot(function, nextSlotNumber(function), true))
         );
         resolve(function.body);
         endScope(function);
@@ -72,30 +71,26 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
 
     private void declare(Token name) {
         if (scopes.isEmpty()) return;
+
         var varDef = resolver.varDef(name);
-
         var currentFunction = functionStack.peek();
-        var scope = scopes.peek();
+        boolean isAlreadyDeclared = slots(currentFunction).containsKey(varDef);
+        boolean isGlobalScope = scopes.size() == 1;
 
-        if (slots(currentFunction).containsKey(varDef)) {
-            if (scopes.size() == 1) return; // Global scope allows redefinitions
-
-            throw new IllegalStateException("Variable " + varDef + " has already been assigned a slot in function " + currentFunction.name.lexeme);
+        if (isAlreadyDeclared && isGlobalScope) {
+             // Global scope allows redefinitions so no need to assign a new slot.
+            return;
         }
 
-        scope.put(varDef, false);
+        scopes.peek().put(varDef, false);
         int slot = nextSlotNumber(currentFunction);
-        slots(currentFunction, varDef, new Slot(currentFunction, slot, true));
+        slots(currentFunction).put(varDef, new Slot(currentFunction, slot, true));
 
         if (DEBUG) System.out.println("assigning " + varDef + " to slot " + slot + " in " + currentFunction.name.lexeme);
     }
 
     private Map<VarDef, Slot> slots(Stmt.Function function) {
-        if (!slots.containsKey(function)) {
-            slots.put(function, new WeakHashMap<>());
-        }
-
-        return slots.get(function);
+        return slots.computeIfAbsent(function, k -> new WeakHashMap<>());
     }
 
     int slot(Stmt.Function function, VarDef varDef) {
@@ -110,21 +105,21 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
         return slot.orElseThrow().number;
     }
 
-    private void slots(Stmt.Function function, VarDef varDef, Slot slot) {
-        slots(function).put(varDef, slot);
-    }
-
     private int nextSlotNumber(Stmt.Function function) {
         Map<VarDef, Slot> slots = slots(function);
         if (slots != null) {
-            var firstFreeSlot = slots.entrySet().stream()
-                    .filter(entry -> !entry.getValue().isUsed)
-                    .min(Comparator.comparingInt(it -> it.getValue().number));
+            var firstFreeSlot = slots
+                .entrySet()
+                .stream()
+                .filter(entry -> !entry.getValue().isUsed)
+                .min(Comparator.comparingInt(it -> it.getValue().number));
             if (firstFreeSlot.isPresent()) {
                 firstFreeSlot.get().getValue().isUsed = true;
                 return firstFreeSlot.get().getValue().number;
             } else {
-                Optional<Slot> maxSlot = slots.values().stream().max(Comparator.comparingInt(it -> it.number));
+                Optional<Slot> maxSlot = slots.values()
+                                              .stream()
+                                              .max(Comparator.comparingInt(it -> it.number));
                 return maxSlot.map(slot -> slot.number).orElse(0) + 1;
             }
         }

@@ -1,7 +1,7 @@
 package com.craftinginterpreters.lox;
 
 import com.craftinginterpreters.lox.CompilerResolver.VarDef;
-import lox.*;
+import lox.LoxNative;
 import org.jetbrains.annotations.Nullable;
 import proguard.classfile.ClassPool;
 import proguard.classfile.ProgramClass;
@@ -11,8 +11,12 @@ import proguard.classfile.attribute.BootstrapMethodInfo;
 import proguard.classfile.attribute.visitor.AllAttributeVisitor;
 import proguard.classfile.attribute.visitor.AttributeNameFilter;
 import proguard.classfile.attribute.visitor.MultiAttributeVisitor;
-import proguard.classfile.editor.*;
+import proguard.classfile.editor.BootstrapMethodsAttributeAdder;
+import proguard.classfile.editor.ClassBuilder;
+import proguard.classfile.editor.CompactCodeAttributeComposer;
 import proguard.classfile.editor.CompactCodeAttributeComposer.Label;
+import proguard.classfile.editor.ConstantPoolEditor;
+import proguard.classfile.editor.LineNumberTableAttributeTrimmer;
 import proguard.classfile.io.ProgramClassReader;
 import proguard.classfile.visitor.AllMethodVisitor;
 import proguard.classfile.visitor.ClassPrinter;
@@ -29,10 +33,16 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.craftinginterpreters.lox.Lox.*;
+import static com.craftinginterpreters.lox.Lox.hadError;
+import static com.craftinginterpreters.lox.Lox.hadRuntimeError;
 import static com.craftinginterpreters.lox.TokenType.FUN;
 import static com.craftinginterpreters.lox.TokenType.IDENTIFIER;
-import static proguard.classfile.AccessConstants.*;
+import static proguard.classfile.AccessConstants.FINAL;
+import static proguard.classfile.AccessConstants.PRIVATE;
+import static proguard.classfile.AccessConstants.PROTECTED;
+import static proguard.classfile.AccessConstants.PUBLIC;
+import static proguard.classfile.AccessConstants.STATIC;
+import static proguard.classfile.AccessConstants.VARARGS;
 import static proguard.classfile.VersionConstants.CLASS_VERSION_1_8;
 import static proguard.classfile.constant.MethodHandleConstant.REF_INVOKE_STATIC;
 import static proguard.classfile.util.ClassUtil.internalClassName;
@@ -79,8 +89,7 @@ public class Compiler {
 
         allocator.resolve(mainFunction);
 
-        var mainMethod = new FunctionCompiler().compile(mainFunction);
-        var mainMethodClass = mainMethod.programClass;
+        var mainMethodClass = new FunctionCompiler().compile(mainFunction);
 
         new ClassBuilder(mainMethodClass)
             .addMethod(PUBLIC | STATIC, "main", "([Ljava/lang/String;)V", 65_536, composer -> {
@@ -154,15 +163,16 @@ public class Compiler {
         private Stmt.Function currentFunction;
         private Stmt.Class currentClass;
 
-        public ClassMethodPair compile(Stmt.Function functionStmt) {
+        public ProgramClass compile(Stmt.Function functionStmt) {
             return compile(null, functionStmt);
         }
 
-        private ClassMethodPair compile(Stmt.Class classStmt, Stmt.Function functionStmt) {
+        private ProgramClass compile(Stmt.Class classStmt, Stmt.Function functionStmt) {
             currentFunction = functionStmt;
             currentClass = classStmt;
-            var pair = createFunction(classStmt, functionStmt);
-            composer = new LoxComposer(new CompactCodeAttributeComposer(pair.programClass), programClassPool, resolver, allocator);
+            var programClass = createFunction(classStmt, functionStmt);
+            var invokeMethod = (ProgramMethod) programClass.findMethod("invoke", null);
+            composer = new LoxComposer(new CompactCodeAttributeComposer(programClass), programClassPool, resolver, allocator);
             composer.beginCodeFragment(65_536);
 
             if (functionStmt instanceof NativeFunction) {
@@ -203,18 +213,17 @@ public class Compiler {
             }
             composer.endCodeFragment();
             try {
-                composer.addCodeAttribute(pair.programClass, pair.programMethod);
+                composer.addCodeAttribute(programClass, invokeMethod);
             } catch (Exception e) {
-                composer.getCodeAttribute().accept(pair.programClass, pair.programMethod, new ClassPrinter());
+                composer.getCodeAttribute().accept(programClass, invokeMethod, new ClassPrinter());
                 throw e;
             }
 
-            return pair;
+            return programClass;
         }
 
         private LoxComposer compile(LoxComposer composer, Stmt.Class classStmt, Stmt.Function function, Function<LoxComposer, LoxComposer> initializer) {
-            var pair = new FunctionCompiler().compile(classStmt, function);
-            var functionClazz = pair.programClass;
+            var functionClazz = new FunctionCompiler().compile(classStmt, function);
 
             composer
                 .new_(functionClazz)
@@ -250,7 +259,7 @@ public class Compiler {
             return composer;
         }
 
-        private ClassMethodPair createFunction(Stmt.Class classStmt, Stmt.Function function) {
+        private ProgramClass createFunction(Stmt.Class classStmt, Stmt.Function function) {
             boolean isMain = function instanceof MainFunction;
             var classBuilder = new ClassBuilder(
                 CLASS_VERSION_1_8,
@@ -338,7 +347,7 @@ public class Compiler {
 
             programClassPool.addClass(programClass);
 
-            return new ClassMethodPair(programClass, (ProgramMethod) programClass.findMethod("invoke", null));
+            return programClass;
         }
 
         private ProgramClass createClass(Stmt.Class classStmt) {
@@ -942,9 +951,6 @@ public class Compiler {
         }
     }
 
-
-    public record ClassMethodPair(ProgramClass programClass, ProgramMethod programMethod) {
-    }
 
     private static class NativeFunction extends Stmt.Function {
         NativeFunction(Token name, List<Token> params) {
