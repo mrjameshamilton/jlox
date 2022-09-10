@@ -9,7 +9,8 @@ public class Optimizer {
     public List<Stmt> execute(List<Stmt> stmt, int passes) {
         var stmtStream = stmt.stream();
         for (int i = 0; i < passes; i++) {
-            stmtStream = stmtStream.map(it -> it.accept(new ConstantExprSimplifier()));
+            ConstantExprSimplifier constantExprSimplifier = new ConstantExprSimplifier();
+            stmtStream = stmtStream.map(it -> it.accept(constantExprSimplifier));
         }
         return stmtStream.collect(Collectors.toList());
     }
@@ -33,12 +34,20 @@ public class Optimizer {
                             return new Expr.Literal(s1 + s2);
                         else if (a.value instanceof Double d1 && b.value instanceof Double d2)
                             return new Expr.Literal(d1 + d2);
+                    } else if (left instanceof Expr.Literal a && a.value instanceof Double d1 && d1 == 0) {
+                        return expr.right;
+                    } else if (right instanceof Expr.Literal b && b.value instanceof Double d2 && d2 == 0) {
+                        return expr.left;
                     }
                 }
                 case MINUS -> {
                     if (left instanceof Expr.Literal a && right instanceof Expr.Literal b &&
                         a.value instanceof Double d1 && b.value instanceof Double d2) {
                         return new Expr.Literal(d1 - d2);
+                    } else if (left instanceof Expr.Literal a && a.value instanceof Double d1 && d1 == 0) {
+                        return new Expr.Unary(new Token(TokenType.MINUS, "-", null, expr.operator.line), expr.right);
+                    } else if (right instanceof Expr.Literal b && b.value instanceof Double d2 && d2 == 0) {
+                        return expr.left;
                     }
                 }
                case SLASH -> {
@@ -48,6 +57,10 @@ public class Optimizer {
                     }
                 }
                 case STAR -> {
+                    if (left instanceof Expr.Literal a && a.value instanceof Double d1 &&
+                        right instanceof Expr.Literal b && b.value instanceof Double d2) {
+                        return new Expr.Literal(d1 * d2);
+                    }
                     if (left instanceof Expr.Literal a && a.value instanceof Double d1 && d1 == 0 ||
                         right instanceof Expr.Literal b && b.value instanceof Double d2 && d2 == 0) {
                         return new Expr.Literal(0.0);
@@ -96,6 +109,29 @@ public class Optimizer {
 
         @Override
         public Expr visitLogicalExpr(Expr.Logical expr) {
+            switch (expr.operator.type) {
+                case OR -> {
+                    if (expr.left instanceof Expr.Literal l1 && l1.value instanceof Boolean b1 &&
+                        expr.right instanceof Expr.Literal l2 && l2.value instanceof Boolean b2) {
+                        return new Expr.Literal(b1 || b2);
+                    }
+
+                    if (expr.left instanceof Expr.Literal l1 && (l1.value == null || (l1.value instanceof Boolean b1 && !b1))) {
+                        return expr.right;
+                    }
+                }
+                case AND -> {
+                    if (expr.left instanceof Expr.Literal l1 && l1.value instanceof Boolean b1 &&
+                        expr.right instanceof Expr.Literal l2 && l2.value instanceof Boolean b2) {
+                        return new Expr.Literal(b1 && b2);
+                    }
+
+                    if (expr.left instanceof Expr.Literal l1 && (l1.value == null || l1.value instanceof Boolean b1 && !b1)) {
+                        return expr.left;
+                    }
+                }
+            }
+
             return new Expr.Logical(
                 expr.left.accept(this),
                 expr.operator,
