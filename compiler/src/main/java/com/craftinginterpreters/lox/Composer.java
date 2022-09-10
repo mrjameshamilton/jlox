@@ -1,20 +1,29 @@
 package com.craftinginterpreters.lox;
 
 import org.jetbrains.annotations.Nullable;
-import proguard.classfile.*;
+import proguard.classfile.ClassPool;
+import proguard.classfile.Clazz;
+import proguard.classfile.Field;
+import proguard.classfile.Member;
+import proguard.classfile.Method;
+import proguard.classfile.ProgramClass;
+import proguard.classfile.ProgramMethod;
 import proguard.classfile.attribute.Attribute;
 import proguard.classfile.attribute.CodeAttribute;
-import proguard.classfile.attribute.ParameterInfo;
 import proguard.classfile.editor.ClassBuilder;
 import proguard.classfile.editor.CodeAttributeComposer;
 import proguard.classfile.editor.CompactCodeAttributeComposer;
 import proguard.classfile.editor.ConstantPoolEditor;
 import proguard.classfile.instruction.Instruction;
+import proguard.classfile.util.ClassUtil;
 import proguard.classfile.util.InternalTypeEnumeration;
 import proguard.resources.file.ResourceFile;
 
-import java.sql.Array;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -24,7 +33,7 @@ import static java.util.stream.Collectors.toMap;
 import static proguard.classfile.AccessConstants.PUBLIC;
 import static proguard.classfile.AccessConstants.STATIC;
 import static proguard.classfile.VersionConstants.CLASS_VERSION_1_8;
-import static proguard.classfile.util.ClassUtil.*;
+import static proguard.classfile.util.ClassUtil.internalPrimitiveTypeFromNumericClassName;
 
 @SuppressWarnings("ALL")
 public class Composer<T extends CompactCodeAttributeComposer> extends CompactCodeAttributeComposer {
@@ -93,10 +102,10 @@ public class Composer<T extends CompactCodeAttributeComposer> extends CompactCod
                             case "J" -> composer.lload(offset);
                             default -> composer.aload(offset);
                         }
-                        offset += internalTypeSize(type);
+                        offset += ClassUtil.internalTypeSize(type);
                     }
                     composerConsumer.accept(composer);
-                    switch (internalMethodReturnType(descriptor)) {
+                    switch (ClassUtil.internalMethodReturnType(descriptor)) {
                         case "I", "B", "C", "S", "Z" -> composer.ireturn();
                         case "D" -> composer.dreturn();
                         case "F" -> composer.freturn();

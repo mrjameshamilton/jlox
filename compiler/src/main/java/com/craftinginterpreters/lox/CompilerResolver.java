@@ -4,11 +4,21 @@ import com.craftinginterpreters.lox.Compiler.MainFunction;
 import com.craftinginterpreters.lox.Stmt.Function;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.Stack;
+import java.util.WeakHashMap;
 import java.util.stream.Collectors;
 
 import static com.craftinginterpreters.lox.Lox.error;
-import static com.craftinginterpreters.lox.TokenType.*;
+import static com.craftinginterpreters.lox.TokenType.SUPER;
+import static com.craftinginterpreters.lox.TokenType.THIS;
 
 public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     public static boolean DEBUG = System.getProperty("jlox.resolver.debug") != null;
@@ -388,7 +398,6 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             return isLateInit;
         }
 
-        // TODO: isRead
         public boolean isUsed() {
             return varUse.containsValue(this);
         }
