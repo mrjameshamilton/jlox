@@ -16,7 +16,7 @@ public class FunctionCallCounter implements Expr.Visitor<Integer>, Stmt.Visitor<
 
     @Override
     public Integer visitAssignExpr(Expr.Assign expr) {
-        return 0;
+        return expr.value.accept(this);
     }
 
     @Override
