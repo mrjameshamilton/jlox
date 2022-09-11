@@ -25,6 +25,8 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
 
     private final Map<Token, VarDef> variables = new HashMap<>();
     private final Map<Token, VarDef> varUse = new WeakHashMap<>();
+    private final Map<Token, Integer> writes = new HashMap<>();
+    private final Map<Token, Integer> reads = new HashMap<>();
     private final Stack<Map<VarDef, Boolean>> scopes = new Stack<>();
     private final Stack<Function> functionStack = new Stack<>();
     private final Map<Token, Set<VarDef>> captured = new HashMap<>();
@@ -43,7 +45,10 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             System.out.println("lateinit: " + variables.values().stream().filter(VarDef::isLateInit).collect(Collectors.toSet()));
             System.out.println("unresolved: " + unresolved);
             System.out.println("varUse: " + varUse);
-            System.out.println("unused: " + variables.values().stream().filter(it -> !it.isUsed()).collect(Collectors.toSet()));
+            System.out.println("writes: " + writes);
+            System.out.println("reads: " + reads);
+            System.out.println("final: " + variables.values().stream().filter(VarDef::isFinal).collect(Collectors.toSet()));
+            System.out.println("unread: " + variables.values().stream().filter(varDef -> !varDef.isRead()).collect(Collectors.toSet()));
         }
 
         // Cannot throw errors for unresolved here, since Lox permits unreachable, unresolved variables.
@@ -81,7 +86,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         endScope(function);
     }
 
-    private void resolveLocal(Expr varAccess, Token name) {
+    private Optional<VarDef> resolveLocal(Expr varAccess, Token name) {
         for (int i = scopes.size() - 1; i >= 0; i--) {
             var varDef = scopes.get(i).keySet().stream().filter(key -> key.token.lexeme.equals(name.lexeme)).findFirst();
             if (varDef.isPresent()) {
@@ -95,11 +100,12 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
                 }
                 varUse.put(name, varDef.get());
                 if (DEBUG) System.out.println(name.lexeme + "@line" + name.line + " -> " + varDef.get() + "@line" + varDef.get().token().line);
-                return;
+                return varDef;
             }
         }
         if (DEBUG) System.out.println(varAccess + " undefined");
         unresolved.add(new UnresolvedLocal(functionStack.peek(), functionStack.size(), varAccess, name));
+        return Optional.empty();
     }
 
     private void beginScope(Function function) {
@@ -130,7 +136,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         var existingVarDef = scope.keySet().stream().filter(it -> it.token().lexeme.equals(name.lexeme)).findFirst();
         if (existingVarDef.isPresent()) {
             varDef = existingVarDef.get();
-
+            writes.merge(varDef.token(), 1, Integer::sum);
             if (!isGlobalScope) error(name, "Already a variable with this name in this scope.");
         } else {
             var currentFunction = functionStack.peek();
@@ -168,7 +174,8 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     @Override
     public Void visitAssignExpr(Expr.Assign expr) {
         resolve(expr.value);
-        resolveLocal(expr, expr.name);
+        var varDef = resolveLocal(expr, expr.name);
+        varDef.ifPresent(it -> writes.merge(it.token, 1, Integer::sum));
         return null;
     }
 
@@ -258,7 +265,8 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
                 });
         }
 
-        resolveLocal(expr, expr.name);
+        var varDef = resolveLocal(expr, expr.name);
+        varDef.ifPresent(it -> reads.merge(it.token, 1, Integer::sum));
         return null;
     }
 
@@ -331,7 +339,10 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     @Override
     public Void visitVarStmt(Stmt.Var stmt) {
         var varDef = declare(stmt.name);
-        if (stmt.initializer != null) resolve(stmt.initializer);
+        if (stmt.initializer != null) {
+            resolve(stmt.initializer);
+            if (varDef != null) writes.put(varDef.token, 1);
+        }
         define(varDef);
         return null;
     }
@@ -398,8 +409,12 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             return isLateInit;
         }
 
-        public boolean isUsed() {
-            return varUse.containsValue(this);
+        public boolean isFinal() {
+            return writes.getOrDefault(token, 0) <= 1;
+        }
+
+        public boolean isRead() {
+            return reads.getOrDefault(token, 0) > 0;
         }
 
         public String getJavaFieldName() {
