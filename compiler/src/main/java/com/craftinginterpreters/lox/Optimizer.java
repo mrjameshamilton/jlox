@@ -1,25 +1,63 @@
 package com.craftinginterpreters.lox;
 
-import java.util.Collections;
+import lox.LoxException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
+import static com.craftinginterpreters.lox.TokenType.MINUS;
+
 public class Optimizer {
+
+    private final CompilerResolver resolver;
+
+
+    public Optimizer(CompilerResolver resolver) {
+        this.resolver = resolver;
+    }
+
+    public Stmt.Function execute(Stmt.Function function, int passes) {
+        return new Stmt.Function(
+            function.name,
+            function.params,
+            execute(function.body, passes)
+        );
+    }
 
     public List<Stmt> execute(List<Stmt> stmt, int passes) {
         var stmtStream = stmt.stream();
         for (int i = 0; i < passes; i++) {
-            ConstantExprSimplifier constantExprSimplifier = new ConstantExprSimplifier();
-            stmtStream = stmtStream.map(it -> it.accept(constantExprSimplifier));
+            var codeSimplifier = new CodeSimplifier();
+            stmtStream = stmtStream
+                .map(it -> it.accept(codeSimplifier))
+                .filter(Objects::nonNull);
         }
         return stmtStream.collect(Collectors.toList());
     }
 
-    private static class ConstantExprSimplifier implements Stmt.Visitor<Stmt>, Expr.Visitor<Expr> {
+    private class CodeSimplifier implements Stmt.Visitor<Stmt>, Expr.Visitor<Expr> {
+        private final Map<Token, Expr> varExprReplacements = new HashMap<>();
 
         @Override
         public Expr visitAssignExpr(Expr.Assign expr) {
-            return new Expr.Assign(expr.name, expr.value.accept(this));
+            var value = expr.value.accept(this);
+            var optionalVarDef = resolver.varDef(expr);
+            if (optionalVarDef.isPresent()) {
+                var varDef = optionalVarDef.get();
+                if (!varDef.isRead()) {
+                    if (value.accept(new SideEffectCounter()) == 0) {
+                        return null;
+                    } else {
+                        return value;
+                    }
+                }
+
+                // TODO: copy propagation
+            }
+
+            return new Expr.Assign(expr.name, value);
         }
 
         @Override
@@ -45,7 +83,7 @@ public class Optimizer {
                         a.value instanceof Double d1 && b.value instanceof Double d2) {
                         return new Expr.Literal(d1 - d2);
                     } else if (left instanceof Expr.Literal a && a.value instanceof Double d1 && d1 == 0) {
-                        return new Expr.Unary(new Token(TokenType.MINUS, "-", null, expr.operator.line), expr.right);
+                        return new Expr.Unary(new Token(MINUS, "-", null, expr.operator.line), expr.right);
                     } else if (right instanceof Expr.Literal b && b.value instanceof Double d2 && d2 == 0) {
                         return expr.left;
                     }
@@ -165,44 +203,79 @@ public class Optimizer {
 
         @Override
         public Expr visitVariableExpr(Expr.Variable expr) {
-            return expr;
+            var varDef = resolver.varDef(expr);
+            return varDef.isPresent() && varExprReplacements.containsKey(varDef.get().token()) ?
+                varExprReplacements.get(varDef.get().token()) :
+                expr;
         }
 
         @Override
         public Stmt visitBlockStmt(Stmt.Block stmt) {
             return new Stmt.Block(
                 stmt.statements
-                        .stream()
-                        .map(it -> it.accept(this))
-                        .collect(Collectors.toList())
+                    .stream()
+                    .map(it -> it.accept(this))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList())
             );
         }
 
         @Override
         public Stmt visitClassStmt(Stmt.Class stmt) {
+            var varDef = resolver.varDef(stmt.name);
+
+            Expr superClass = null;
+            if (stmt.superclass != null) {
+                superClass = stmt.superclass.accept(this);
+
+                if (!(superClass instanceof Expr.Variable)) {
+                    // For compatibility with Lox test suite, throw a runtime error.
+                    throw new LoxException("Superclass must be a class.", stmt.superclass.name.line);
+                }
+            }
+
+            if (varDef != null && !varDef.isRead() &&
+                // If superClass is not null, it can cause a side effect of a runtime error
+                // because we don't know until runtime if the variable contains a class.
+                superClass == null) {
+                return null;
+            }
+
             return new Stmt.Class(
                 stmt.name,
-                stmt.superclass == null ? null : (Expr.Variable) stmt.superclass.accept(this),
+                stmt.superclass == null ? null : (Expr.Variable) superClass,
                 stmt.methods
                     .stream()
                     .map(it -> (Stmt.Function)it.accept(this))
+                    .filter(Objects::nonNull)
                     .collect(Collectors.toList())
             );
         }
 
         @Override
         public Stmt visitExpressionStmt(Stmt.Expression stmt) {
-            return new Stmt.Expression(stmt.expression.accept(this));
+            var expr = stmt.expression.accept(this);
+            return expr == null ? null : new Stmt.Expression(expr);
         }
 
         @Override
         public Stmt visitFunctionStmt(Stmt.Function stmt) {
+            var varDef = resolver.varDef(stmt.name);
+            if (varDef != null && !varDef.isRead()) {
+                return null;
+            }
+
+            if (stmt instanceof Compiler.NativeFunction nativeFunction) {
+                return nativeFunction;
+            }
+
             return new Stmt.Function(
                 stmt.name,
                 stmt.params,
                 stmt.body
                     .stream()
                     .map(it -> it.accept(this))
+                    .filter(Objects::nonNull)
                     .collect(Collectors.toList())
             );
         }
@@ -214,15 +287,16 @@ public class Optimizer {
                     if (stmt.elseBranch != null)
                         return stmt.elseBranch.accept(this);
                     else
-                        return new Stmt.Block(Collections.emptyList());
+                        return null;
                 } else if (l.value instanceof Boolean b) {
                     if (b) return stmt.thenBranch.accept(this);
                     else if (stmt.elseBranch != null) return stmt.elseBranch.accept(this);
-                    else return new Stmt.Block(Collections.emptyList());
+                    else return null;
                 } else {
                     return stmt.thenBranch.accept(this);
                 }
             }
+
             return new Stmt.If(
                 stmt.condition.accept(this),
                 stmt.thenBranch.accept(this),
@@ -242,7 +316,33 @@ public class Optimizer {
 
         @Override
         public Stmt visitVarStmt(Stmt.Var stmt) {
-            return stmt.initializer != null ? new Stmt.Var(stmt.name, stmt.initializer.accept(this)) : new Stmt.Var(stmt.name, null);
+            var varDef = resolver.varDef(stmt.name);
+
+            if (!varDef.isRead()) {
+                // The variable is never read but if it has an initializer,
+                // there could be side effects.
+                if (stmt.initializer != null) {
+                    if (stmt.initializer.accept(new SideEffectCounter()) == 0) {
+                        return null;
+                    } else {
+                        // potential side effects so keep the initializer
+                        return new Stmt.Expression(stmt.initializer);
+                    }
+                } else {
+                    return null;
+                }
+            }
+
+            if (stmt.initializer != null) {
+                var expr = stmt.initializer.accept(this);
+                if (expr instanceof Expr.Literal && varDef.isFinal()) {
+                    varExprReplacements.put(varDef.token(), expr);
+                    return null;
+                }
+                return new Stmt.Var(stmt.name, expr);
+            }
+
+            return new Stmt.Var(stmt.name, null);
         }
 
         @Override

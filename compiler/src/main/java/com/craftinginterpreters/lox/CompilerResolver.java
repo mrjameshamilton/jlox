@@ -23,15 +23,15 @@ import static com.craftinginterpreters.lox.TokenType.THIS;
 public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     public static boolean DEBUG = System.getProperty("jlox.resolver.debug") != null;
 
-    private final Map<Token, VarDef> variables = new HashMap<>();
+    private final Map<Token, VarDef> variables = new WeakHashMap<>();
     private final Map<Token, VarDef> varUse = new WeakHashMap<>();
-    private final Map<Token, Integer> writes = new HashMap<>();
-    private final Map<Token, Integer> reads = new HashMap<>();
+    private final Map<Token, Integer> writes = new WeakHashMap<>();
+    private final Map<Token, Integer> reads = new WeakHashMap<>();
     private final Stack<Map<VarDef, Boolean>> scopes = new Stack<>();
     private final Stack<Function> functionStack = new Stack<>();
-    private final Map<Token, Set<VarDef>> captured = new HashMap<>();
-    private final Map<Token, String> javaClassNames = new HashMap<>();
-    private final Map<Token, String> javaFieldNames = new HashMap<>();
+    private final Map<Token, Set<VarDef>> captured = new WeakHashMap<>();
+    private final Map<Token, String> javaClassNames = new WeakHashMap<>();
+    private final Map<Token, String> javaFieldNames = new WeakHashMap<>();
     private final Set<UnresolvedLocal> unresolved = new HashSet<>();
 
     public void resolve(Function main) {
@@ -43,12 +43,12 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             System.out.println("globals: " + variables.values().stream().filter(VarDef::isGlobal).collect(Collectors.toSet()));
             System.out.println("captured: " + variables.values().stream().filter(VarDef::isCaptured).collect(Collectors.toSet()));
             System.out.println("lateinit: " + variables.values().stream().filter(VarDef::isLateInit).collect(Collectors.toSet()));
+            System.out.println("final: " + variables.values().stream().filter(VarDef::isFinal).collect(Collectors.toSet()));
+            System.out.println("unread: " + variables.values().stream().filter(varDef -> !varDef.isRead()).collect(Collectors.toSet()));
             System.out.println("unresolved: " + unresolved);
             System.out.println("varUse: " + varUse);
             System.out.println("writes: " + writes);
             System.out.println("reads: " + reads);
-            System.out.println("final: " + variables.values().stream().filter(VarDef::isFinal).collect(Collectors.toSet()));
-            System.out.println("unread: " + variables.values().stream().filter(varDef -> !varDef.isRead()).collect(Collectors.toSet()));
         }
 
         // Cannot throw errors for unresolved here, since Lox permits unreachable, unresolved variables.
@@ -516,6 +516,8 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     }
 
     private void captureThisOrSuper(Function function, VarDef thisOrSuperDef, int depth) {
+        // There's no actual variables, but the depth will be used
+        // to get the enclosing instance at the correct distance.
         thisOrSuperDef.captureDepth.put(function.name, depth);
     }
 

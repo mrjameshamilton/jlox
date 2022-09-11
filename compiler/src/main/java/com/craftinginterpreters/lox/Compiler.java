@@ -26,14 +26,12 @@ import proguard.preverify.CodePreverifier;
 import java.io.DataInputStream;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.craftinginterpreters.lox.Lox.*;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_CALLABLE;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_CAPTURED;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_CLASS;
@@ -86,7 +84,7 @@ public class Compiler {
 
         resolver.resolve(mainFunction);
 
-        if (hadError || hadRuntimeError) return null;
+        mainFunction = new Optimizer(resolver).execute(mainFunction, 3);
 
         allocator.resolve(mainFunction);
 

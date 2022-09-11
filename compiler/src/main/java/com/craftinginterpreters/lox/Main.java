@@ -1,5 +1,6 @@
 package com.craftinginterpreters.lox;
 
+import lox.LoxException;
 import org.jetbrains.annotations.Nullable;
 import proguard.classfile.ClassPool;
 import proguard.classfile.util.ClassPoolClassLoader;
@@ -49,25 +50,29 @@ public class Main {
     }
 
     public static @Nullable ClassPool compile(String source) {
-        var scanner = new Scanner(source);
-        var tokens = scanner.scanTokens();
+        try {
+            var scanner = new Scanner(source);
+            var tokens = scanner.scanTokens();
 
-        var parser = new Parser(tokens);
+            var parser = new Parser(tokens);
 
-        var statements = parser.parse();
+            var statements = parser.parse();
 
-        if (hadError) return null;
+            if (hadError) return null;
 
-        new Checker().execute(statements);
+            new Checker().execute(statements);
 
-        if (hadError) return null;
+            if (hadError) return null;
 
-         statements = new Optimizer().execute(statements, 5);
+            var classPool = new Compiler().compile(statements);
 
-        var classPool = new Compiler().compile(statements);
+            if (hadError) return null;
 
-        if (hadError) return null;
-
-        return classPool;
+            return classPool;
+        } catch (LoxException e) {
+            System.err.println(e.getMessage());
+            hadRuntimeError = true;
+            return null;
+        }
     }
 }
