@@ -32,7 +32,6 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
                 .entrySet()
                 .stream()
                 .filter(it -> it.getKey().equals(varDef))
-                //.filter(it -> it.getKey().isUsed()) // TODO
                 .map(Map.Entry::getValue)
                 .findFirst();
 
