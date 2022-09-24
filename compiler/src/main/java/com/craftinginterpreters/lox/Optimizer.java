@@ -1,12 +1,12 @@
 package com.craftinginterpreters.lox;
 
-import lox.LoxException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import static com.craftinginterpreters.lox.Lox.runtimeError;
 import static com.craftinginterpreters.lox.TokenType.MINUS;
 
 public class Optimizer {
@@ -230,7 +230,8 @@ public class Optimizer {
 
                 if (!(superClass instanceof Expr.Variable)) {
                     // For compatibility with Lox test suite, throw a runtime error.
-                    throw new LoxException("Superclass must be a class.", stmt.superclass.name.line);
+                    runtimeError(new RuntimeError(stmt.superclass.name, "Superclass must be a class."));
+                    return null;
                 }
             }
 

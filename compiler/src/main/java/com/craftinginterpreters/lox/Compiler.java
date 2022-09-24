@@ -32,6 +32,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.craftinginterpreters.lox.Lox.hadError;
+import static com.craftinginterpreters.lox.Lox.hadRuntimeError;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_CALLABLE;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_CAPTURED;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_CLASS;
@@ -84,7 +86,11 @@ public class Compiler {
 
         resolver.resolve(mainFunction);
 
+        if (hadError || hadRuntimeError) return null;
+
         mainFunction = new Optimizer(resolver).execute(mainFunction, 3);
+
+        if (hadError || hadRuntimeError) return null;
 
         allocator.resolve(mainFunction);
 
