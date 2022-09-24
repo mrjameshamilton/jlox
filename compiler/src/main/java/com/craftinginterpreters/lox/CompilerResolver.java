@@ -86,16 +86,44 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         endScope(function);
     }
 
+    /**
+     * Given a variable access expression (VarExpr, AssignExpr, SuperExpr, ThisExpr)
+     * find the matching definition in the closest scope. For example:
+     * <code>
+     * 1: var a = 1;
+     * 2: {
+     * 3:    {
+     * 4:        var a = 2;
+     * 5:        print a; // resolves to a@line4
+     * 6:    }
+     * 7:    print a; // resolves to a@line1
+     * 8: }
+     * </code>
+     * <p>
+     * It's possible that the definition is outside a given function, in which case
+     * the variable is *captured* by the function. In this case, the depth
+     * between the definition function where the variable is used and the function where
+     * the variable is defined is recorded; the compiler will later use the depth information
+     * to get the enclosing function at that depth. For example:
+     * <p>
+     * 0: // main
+     * 1: var a = 1; // depth 2
+     * 2: fun foo() { // depth 1
+     * 3:    fun bar() { // depth 0
+     * 4:        print a; // resolves to a@line1 with depth 2
+     * 5:    }
+     * 6: }
+     */
     private Optional<VarDef> resolveLocal(Expr varAccess, Token name) {
         for (int i = scopes.size() - 1; i >= 0; i--) {
             var varDef = scopes.get(i).keySet().stream().filter(key -> key.token.lexeme.equals(name.lexeme)).findFirst();
             if (varDef.isPresent()) {
-                int depth = functionStack.size() - functionStack.indexOf(varDef.get().function) - 1;
+                int depth = functionStack.size() - functionStack.indexOf(varDef.get().function) - 1 /* to account for current function */;
                 if (depth != 0) {
                     if (varAccess instanceof Expr.This || varAccess instanceof Expr.Super) {
                         captureThisOrSuper(functionStack.peek(), varDef.get(), depth - 1);
                     } else {
-                        capture(functionStack.peek(), varDef.get(), depth - 1);
+                        capture(functionStack.peek(), varDef.get(), depth);
                     }
                 }
                 varUse.put(name, varDef.get());
@@ -455,6 +483,10 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
                 classStack.peek().isLateInit = true;
             }
             stmt.body.forEach(it -> it.accept(this));
+/*
+            var counter = new SpecificFunctionCallCounter(CompilerResolver.this);
+            var count = counter.count(stmt, stmt);
+            if (count > 0) varDef(stmt.name).isLateInit = true;*/
             return null;
         }
 

@@ -227,6 +227,16 @@ public class Compiler {
             return programClass;
         }
 
+        private LoxComposer compileFunction(LoxComposer composer, Stmt.Function function) {
+            return compile(composer, null, function, loxComposer -> loxComposer
+                .declare(currentFunction, function.name)
+            );
+        }
+
+        private LoxComposer compileMethod(LoxComposer composer, Stmt.Class classStmt, Stmt.Function function) {
+           return compile(composer, classStmt, function, null);
+        }
+
         private LoxComposer compile(LoxComposer composer, Stmt.Class classStmt, Stmt.Function function, Function<LoxComposer, LoxComposer> initializer) {
             var functionClazz = new FunctionCompiler().compile(classStmt, function);
 
@@ -237,30 +247,16 @@ public class Compiler {
                 .line(function.name.line)
                 .invokespecial(functionClazz.getName(), "<init>", "(L" + (classStmt == null ? LOX_CALLABLE : LOX_CLASS) + ";)V");
 
-            if (!resolver.captured(function).isEmpty()) composer.dup();
+            boolean capturesAnyVariables = resolver.captured(function).isEmpty();
+            if (!capturesAnyVariables) composer.dup();
 
+            // Initialize before capturing variables.
+            // The function will be on the stack.
             if (initializer != null) initializer.apply(composer);
 
-            if (!resolver.captured(function).isEmpty()) {
-                resolver.captured(function).forEach(captured -> {
-                    if (captured.isGlobal()) {
-                        composer
-                                .dup()
-                                .getstatic(LOX_MAIN_CLASS, captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
-                                .putfield(resolver.javaClassName(function), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
-                    } else {
-                        composer
-                                .dup()
-                                .aload_0()
-                                .iconst(captured.distanceTo(function))
-                                .invokeinterface(LOX_CALLABLE, "getEnclosing", "(I)L" + LOX_CALLABLE + ";")
-                                .checkcast(resolver.javaClassName(captured.function()))
-                                .getfield(resolver.javaClassName(captured.function()), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
-                                .putfield(resolver.javaClassName(function), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
-                    }
-                });
-                composer.pop();
-            }
+            if (!capturesAnyVariables)
+                composer.invokevirtual(functionClazz.getName(), "capture", "()V");
+
             return composer;
         }
 
@@ -326,6 +322,7 @@ public class Compiler {
                             } else {
                                 loxComposer
                                     .aload_0()
+                                    .swap()
                                     .putfield(loxComposer.getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
                             }
                         });
@@ -334,6 +331,31 @@ public class Compiler {
                     loxComposer.return_();
                 });
 
+            if (!resolver.captured(function).isEmpty()) {
+                classBuilder.addMethod(PUBLIC, "capture", "()V", 65535, composer -> {
+                    composer.aload_0();
+                    resolver.captured(function).forEach(captured -> {
+                        if (captured.isGlobal()) {
+                            composer
+                                .dup()
+                                .getstatic(LOX_MAIN_CLASS, captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
+                                .putfield(resolver.javaClassName(function), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+                        } else {
+                            composer
+                                .dup()
+                                .aload_0()
+                                .iconst(captured.distanceTo(function))
+                                .invokeinterface(LOX_CALLABLE, "getEnclosing", "(I)L" + LOX_CALLABLE + ";")
+                                .checkcast(resolver.javaClassName(captured.function()))
+                                .getfield(resolver.javaClassName(captured.function()), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
+                                .putfield(resolver.javaClassName(function), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+                        }
+                    });
+                    composer
+                        .pop()
+                        .return_();
+                });
+            }
 
             if (function instanceof NativeFunction) {
                 // For compatibility with Lox all native functions print `<native fn>`.
@@ -367,12 +389,11 @@ public class Compiler {
                 composer = new LoxComposer(composer, programClassPool, resolver, allocator);
                 for (var method : classStmt.methods) {
                     classBuilder.addField(PRIVATE | FINAL, resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
-                    compile((LoxComposer) composer, classStmt, method, loxComposer -> loxComposer
-                        .dup()
-                        .aload_0()
-                        .swap()
-                        .putfield(loxComposer.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";")
-                    );
+                    compileMethod((LoxComposer) composer, classStmt, method)
+                    // method is on the stack
+                    .aload_0()
+                    .swap()
+                    .putfield(composer.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
                 }
                 composer.return_();
             });
@@ -471,9 +492,7 @@ public class Compiler {
 
         @Override
         public LoxComposer visitFunctionStmt(Stmt.Function functionStmt) {
-            return compile(composer, null, functionStmt, composer -> composer
-                .declare(currentFunction, functionStmt.name)
-            );
+            return compileFunction(composer, functionStmt);
         }
 
         @Override
