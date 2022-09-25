@@ -29,7 +29,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.craftinginterpreters.lox.Lox.hadError;
@@ -276,24 +275,35 @@ public class Compiler {
                 .ireturn())
             .addMethod(PUBLIC | VARARGS, "invoke", "([Ljava/lang/Object;)Ljava/lang/Object;");
 
+            var variables = resolver.variables(function);
+            var variablesCapturedByFunction = resolver.captured(function);
+            var capturedVariablesDeclaredInFunction = variables.stream().filter(VarDef::isCaptured);
+            var lateInitVars = variables.stream().filter(VarDef::isLateInit).toList();
+
             if (isMain) {
-                resolver
-                    .variables(function)
-                    .stream()
-                    .filter(VarDef::isGlobal)
-                    .filter(VarDef::isCaptured)
-                    .forEach(global -> classBuilder.
-                            addField(
-                                    PUBLIC | STATIC,
-                                    global.getJavaFieldName(),
-                                    global.isCaptured() ? "L" + LOX_CAPTURED + ";" : "Ljava/lang/Object;")
-                    );
+                // main can't capture in variables, but variables declared in main can be captured.
+                capturedVariablesDeclaredInFunction.forEach(global -> classBuilder.
+                    addField(PUBLIC | STATIC, global.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
+                );
             } else {
-                Stream.concat(resolver.captured(function).stream(), resolver.variables(function).stream().filter(VarDef::isCaptured))
+                Stream.concat(variablesCapturedByFunction.stream(), capturedVariablesDeclaredInFunction)
                     .distinct()
                     .forEach(captured -> classBuilder
                         .addField(PUBLIC, captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
                     );
+            }
+
+            if (isMain) {
+                if (!lateInitVars.isEmpty()) {
+                    classBuilder.addMethod(PRIVATE | STATIC, "<clinit>", "()V", 65535, composer -> {
+                        var loxComposer = new LoxComposer(composer, programClassPool, resolver, allocator);
+                        lateInitVars.forEach(varDef -> loxComposer
+                            .aconst_null()
+                            .box(varDef)
+                            .putstatic(LOX_MAIN_CLASS, varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";"));
+                        composer.return_();
+                    });
+                }
             }
 
             classBuilder
@@ -304,51 +314,35 @@ public class Compiler {
                         .aload_1()
                         .invokespecial(classStmt == null ? LOX_FUNCTION : LOX_METHOD, "<init>", "(L" + (classStmt == null ? LOX_CALLABLE : LOX_CLASS) + ";)V");
 
-                    var lateInitVars = resolver.variables(function)
-                        .stream()
-                        .filter(VarDef::isLateInit)
-                        .collect(Collectors.toSet());
-
-                    // Create null captured values for lateinit variables,
-                    // since they will be captured before they are declared.
-                    if (!lateInitVars.isEmpty()) {
-                        lateInitVars.forEach(varDef -> {
-                            loxComposer
-                                .aconst_null()
-                                .box(varDef);
-                            if (isMain) {
-                                loxComposer
-                                    .putstatic(LOX_MAIN_CLASS, varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
-                            } else {
-                                loxComposer
-                                    .aload_0()
-                                    .swap()
-                                    .putfield(loxComposer.getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
-                            }
-                        });
+                    if (!isMain) {
+                        lateInitVars.forEach(varDef -> loxComposer
+                            .aload_0()
+                            .aconst_null()
+                            .box(varDef)
+                            .putfield(loxComposer.getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";"));
                     }
 
                     loxComposer.return_();
                 });
 
-            if (!resolver.captured(function).isEmpty()) {
+            if (!variablesCapturedByFunction.isEmpty()) {
                 classBuilder.addMethod(PUBLIC, "capture", "()V", 65535, composer -> {
                     composer.aload_0();
-                    resolver.captured(function).forEach(captured -> {
-                        if (captured.isGlobal()) {
+                    variablesCapturedByFunction.forEach(varDef -> {
+                        if (varDef.isGlobal()) {
                             composer
                                 .dup()
-                                .getstatic(LOX_MAIN_CLASS, captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
-                                .putfield(resolver.javaClassName(function), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+                                .getstatic(LOX_MAIN_CLASS, varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
+                                .putfield(resolver.javaClassName(function), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
                         } else {
                             composer
                                 .dup()
                                 .aload_0()
-                                .iconst(captured.distanceTo(function))
+                                .iconst(varDef.distanceTo(function))
                                 .invokeinterface(LOX_CALLABLE, "getEnclosing", "(I)L" + LOX_CALLABLE + ";")
-                                .checkcast(resolver.javaClassName(captured.function()))
-                                .getfield(resolver.javaClassName(captured.function()), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
-                                .putfield(resolver.javaClassName(function), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+                                .checkcast(resolver.javaClassName(varDef.function()))
+                                .getfield(resolver.javaClassName(varDef.function()), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
+                                .putfield(resolver.javaClassName(function), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
                         }
                     });
                     composer
