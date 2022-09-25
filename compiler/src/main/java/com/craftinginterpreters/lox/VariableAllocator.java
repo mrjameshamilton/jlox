@@ -17,7 +17,7 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
     private final CompilerResolver resolver;
     private final Stack<Stmt.Function> functionStack = new Stack<>();
     private final Stack<Map<VarDef, Boolean>> scopes = new Stack<>();
-    private final Map<Stmt.Function, Map<VarDef, Slot>> slots = new HashMap<>();
+    private final Map<Token, Map<VarDef, Slot>> slots = new HashMap<>();
 
     public VariableAllocator(CompilerResolver resolver) {
         this.resolver = resolver;
@@ -255,7 +255,7 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
     }
 
     private Map<VarDef, Slot> slots(Stmt.Function function) {
-        return slots.computeIfAbsent(function, k -> new WeakHashMap<>());
+        return slots.computeIfAbsent(function.name, k -> new WeakHashMap<>());
     }
 
     private int nextSlotNumber(Stmt.Function function) {
