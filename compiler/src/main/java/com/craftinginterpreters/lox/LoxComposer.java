@@ -129,8 +129,9 @@ public class LoxComposer extends Composer<LoxComposer> {
         return this;
     }
 
-    public LoxComposer declare(Stmt.Function function, Token name) {
-        var varDef = resolver.varDef(name);
+    public LoxComposer declare(VarDef varDef) {
+        if (!varDef.isRead()) return this;
+
         if (varDef.isGlobal()) {
             if (varDef.isCaptured()) {
                 if (varDef.isLateInit()) {
@@ -163,7 +164,7 @@ public class LoxComposer extends Composer<LoxComposer> {
             putfield(getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
         }
 
-        astore(allocator.slot(function, varDef));
+        astore(allocator.slot(varDef.function(), varDef));
 
         return this;
     }

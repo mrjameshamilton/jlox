@@ -61,6 +61,7 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
         resolver.captured(function)
                 .stream()
                 .filter(it -> !it.isGlobal())
+                .filter(VarDef::isRead)
                 .forEach(
                     varDef -> slots(function).put(varDef, new Slot(function, nextSlotNumber(function), true))
                 );
@@ -98,6 +99,9 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
         if (scopes.isEmpty()) return;
 
         var varDef = resolver.varDef(name);
+
+        if (!varDef.isRead()) return;
+
         var currentFunction = functionStack.peek();
         boolean isAlreadyDeclared = slots(currentFunction).containsKey(varDef);
         boolean isGlobalScope = scopes.size() == 1;

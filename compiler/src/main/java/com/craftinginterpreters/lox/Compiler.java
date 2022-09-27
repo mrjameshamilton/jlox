@@ -185,18 +185,30 @@ public class Compiler {
                     .invokestatic(LOX_NATIVE, functionStmt.name.lexeme, "(" + "Ljava/lang/Object;".repeat(functionStmt.params.size()) + ")Ljava/lang/Object;")
                     .areturn();
             } else {
-                if (!functionStmt.params.isEmpty()) composer
+                var params = functionStmt
+                    .params
+                    .stream()
+                    .map(resolver::varDef)
+                    .filter(VarDef::isRead)
+                    .toList();
+
+                if (!params.isEmpty()) composer
                     .aload_1()
                     .unpack(
-                        functionStmt.params.size(),
-                        (composer, n) -> composer.declare(functionStmt, functionStmt.params.get(n))
+                        params.size(),
+                        (composer, n) -> composer.declare(params.get(n))
                     );
 
-                resolver.captured(functionStmt).stream().filter(it -> !it.isGlobal()).forEach(captured -> composer
-                    .aload_0()
-                    .getfield(composer.getTargetClass().getName(), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
-                    .astore(allocator.slot(functionStmt, captured))
-                );
+                resolver
+                    .captured(functionStmt)
+                    .stream()
+                    .filter(it -> !it.isGlobal())
+                    .filter(VarDef::isRead)
+                    .forEach(captured -> composer
+                        .aload_0()
+                        .getfield(composer.getTargetClass().getName(), captured.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
+                        .astore(allocator.slot(functionStmt, captured))
+                    );
 
                 functionStmt.body.forEach(
                     stmt -> stmt.accept(this)
@@ -228,7 +240,7 @@ public class Compiler {
 
         private LoxComposer compileFunction(LoxComposer composer, Stmt.Function function) {
             return compile(composer, null, function, loxComposer -> loxComposer
-                .declare(currentFunction, function.name)
+                .declare(resolver.varDef(function.name))
             );
         }
 
@@ -473,7 +485,7 @@ public class Compiler {
                 composer.invokespecial(clazz.getName(), "<init>", "(L" + LOX_CALLABLE + ";)V");
             }
 
-            return composer.declare(currentFunction, classStmt.name);
+            return composer.declare(resolver.varDef(classStmt.name));
         }
 
         @Override
@@ -594,7 +606,7 @@ public class Compiler {
 
             return composer
                     .line(stmt.name.line)
-                    .declare(currentFunction, stmt.name);
+                    .declare(resolver.varDef(stmt.name));
         }
 
         @Override
