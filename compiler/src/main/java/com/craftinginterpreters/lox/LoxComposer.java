@@ -136,12 +136,12 @@ public class LoxComposer extends Composer<LoxComposer> {
             if (varDef.isCaptured()) {
                 if (varDef.isLateInit()) {
                     // Late init vars already have an initial value set in the function's constructor
-                    getstatic(LOX_MAIN_CLASS, varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+                    getstatic(resolver.javaClassName(varDef.function()), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
                     swap();
                     invokevirtual(LOX_CAPTURED, "setValue", "(Ljava/lang/Object;)V");
                 } else {
                     box(varDef);
-                    putstatic(LOX_MAIN_CLASS, varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+                    putstatic(resolver.javaClassName(varDef.function()), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
                 }
                 // Don't need to store captured globals in a local.
                 return this;
@@ -152,7 +152,7 @@ public class LoxComposer extends Composer<LoxComposer> {
         } else if (varDef.isLateInit()) {
             // Late init vars already have an initial value set in the function's constructor
             aload_0();
-            getfield(getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+            getfield(resolver.javaClassName(varDef.function()), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
             dup_x1();
             swap();
             invokevirtual(LOX_CAPTURED, "setValue", "(Ljava/lang/Object;)V");
@@ -161,7 +161,7 @@ public class LoxComposer extends Composer<LoxComposer> {
             dup();
             aload_0();
             swap();
-            putfield(getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
+            putfield(resolver.javaClassName(varDef.function()), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
         }
 
         astore(allocator.slot(varDef.function(), varDef));

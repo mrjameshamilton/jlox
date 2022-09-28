@@ -12,10 +12,7 @@ public abstract class LoxClass implements LoxCallable {
     public LoxClass(LoxCallable enclosing, LoxClass superClass) {
         $enclosing = enclosing;
         $superClass = superClass;
-        initialize();
     }
-
-    protected abstract void initialize();
 
     public abstract LoxMethod findMethod(String name);
 

@@ -238,16 +238,6 @@ public class Compiler {
             return programClass;
         }
 
-        private LoxComposer compileFunction(LoxComposer composer, Stmt.Function function) {
-            return compile(composer, null, function, loxComposer -> loxComposer
-                .declare(resolver.varDef(function.name))
-            );
-        }
-
-        private LoxComposer compileMethod(LoxComposer composer, Stmt.Class classStmt, Stmt.Function function) {
-           return compile(composer, classStmt, function, null);
-        }
-
         private LoxComposer compile(LoxComposer composer, Stmt.Class classStmt, Stmt.Function function, Function<LoxComposer, LoxComposer> initializer) {
             var functionClazz = new FunctionCompiler().compile(classStmt, function);
 
@@ -391,31 +381,33 @@ public class Compiler {
                 LOX_CLASS
             );
 
-            classBuilder.addMethod(PROTECTED, "initialize", "()V", 100, composer -> {
-                composer = new LoxComposer(composer, programClassPool, resolver, allocator);
+            Function<LoxComposer, LoxComposer> methodInitializer = composer -> {
                 for (var method : classStmt.methods) {
                     classBuilder.addField(PRIVATE | FINAL, resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
-                    compileMethod((LoxComposer) composer, classStmt, method)
-                    // method is on the stack
-                    .aload_0()
-                    .swap()
-                    .putfield(composer.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
+                    compile(composer, classStmt, method, composer1 -> composer1
+                        // store the method in the field
+                        .aload_0()
+                        .swap()
+                        .putfield(composer1.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";")
+                    );
                 }
-                composer.return_();
-            });
+                return composer;
+            };
 
             if (classStmt.superclass != null) {
-                classBuilder.addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V", 100, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
+                classBuilder.addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V", 65535, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
                     .aload_0()
                     .aload_1()
                     .aload_2()
                     .invokespecial(LOX_CLASS, "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V")
+                    .also(methodInitializer::apply)
                     .return_());
             } else {
-                classBuilder.addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";)V", 100, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
+                classBuilder.addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";)V", 65535, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
                     .aload_0()
                     .aload_1()
                     .invokespecial(LOX_CLASS, "<init>", "(L" + LOX_CALLABLE + ";)V")
+                    .also(methodInitializer::apply)
                     .return_());
             }
 
@@ -498,7 +490,9 @@ public class Compiler {
 
         @Override
         public LoxComposer visitFunctionStmt(Stmt.Function functionStmt) {
-            return compileFunction(composer, functionStmt);
+            return compile(composer, null, functionStmt, loxComposer -> loxComposer
+                .declare(resolver.varDef(functionStmt.name))
+            );
         }
 
         @Override
