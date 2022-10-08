@@ -113,6 +113,14 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
      * 4:        print a; // resolves to a@line1 with depth 2
      * 5:    }
      * 6: }
+     * <p>
+     * class {
+     *     foo() { // depth 1
+     *         bar() { // depth 0
+     *             print this; // resolves to class with depth 1
+     *         }
+     *     }
+     * }
      */
     private Optional<VarDef> resolveLocal(Expr varAccess, Token name) {
         for (int i = scopes.size() - 1; i >= 0; i--) {
