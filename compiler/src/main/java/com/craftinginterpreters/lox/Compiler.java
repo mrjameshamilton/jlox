@@ -177,7 +177,7 @@ public class Compiler {
             var programClass = createFunction(classStmt, functionStmt);
             var invokeMethod = (ProgramMethod) programClass.findMethod("invoke", null);
             composer = new LoxComposer(new CompactCodeAttributeComposer(programClass), programClassPool, resolver, allocator);
-            composer.beginCodeFragment(65_536);
+            composer.beginCodeFragment(65_535);
 
             if (functionStmt instanceof NativeFunction) {
                 for (int i = 0; i < functionStmt.params.size(); i++) composer.aload(i);
