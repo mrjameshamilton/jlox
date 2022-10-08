@@ -17,6 +17,6 @@ public class LoxCaptured {
 
     @Override
     public String toString() {
-        return "<captured " + this.value.toString() + ">";
+        return "<captured " + this.value + ">";
     }
 }
