@@ -47,7 +47,6 @@ import static com.craftinginterpreters.lox.TokenType.IDENTIFIER;
 import static java.util.Collections.emptyList;
 import static proguard.classfile.AccessConstants.FINAL;
 import static proguard.classfile.AccessConstants.PRIVATE;
-import static proguard.classfile.AccessConstants.PROTECTED;
 import static proguard.classfile.AccessConstants.PUBLIC;
 import static proguard.classfile.AccessConstants.STATIC;
 import static proguard.classfile.AccessConstants.VARARGS;
@@ -174,7 +173,7 @@ public class Compiler {
         private ProgramClass compile(Stmt.Class classStmt, Stmt.Function functionStmt) {
             currentFunction = functionStmt;
             currentClass = classStmt;
-            var programClass = createFunction(classStmt, functionStmt);
+            var programClass = createFunctionClass(classStmt, functionStmt);
             var invokeMethod = (ProgramMethod) programClass.findMethod("invoke", null);
             composer = new LoxComposer(new CompactCodeAttributeComposer(programClass), programClassPool, resolver, allocator);
             composer.beginCodeFragment(65_535);
@@ -238,6 +237,16 @@ public class Compiler {
             return programClass;
         }
 
+        private LoxComposer compileFunction(LoxComposer composer, Stmt.Function function) {
+            return compile(composer, null, function, composer1 ->
+                composer1.declare(resolver.varDef(function.name))
+            );
+        }
+
+        private LoxComposer compileMethod(LoxComposer composer, Stmt.Class classStmt, Stmt.Function function) {
+            return compile(composer, classStmt, function, null);
+        }
+
         private LoxComposer compile(LoxComposer composer, Stmt.Class classStmt, Stmt.Function function, Function<LoxComposer, LoxComposer> initializer) {
             var functionClazz = new FunctionCompiler().compile(classStmt, function);
 
@@ -261,7 +270,7 @@ public class Compiler {
             return composer;
         }
 
-        private ProgramClass createFunction(Stmt.Class classStmt, Stmt.Function function) {
+        private ProgramClass createFunctionClass(Stmt.Class classStmt, Stmt.Function function) {
             boolean isMain = resolver.javaClassName(function).equals(LOX_MAIN_CLASS);
             var classBuilder = new ClassBuilder(
                 CLASS_VERSION_1_8,
@@ -384,12 +393,11 @@ public class Compiler {
             Function<LoxComposer, LoxComposer> methodInitializer = composer -> {
                 for (var method : classStmt.methods) {
                     classBuilder.addField(PRIVATE | FINAL, resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
-                    compile(composer, classStmt, method, composer1 -> composer1
-                        // store the method in the field
-                        .aload_0()
-                        .swap()
-                        .putfield(composer1.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";")
-                    );
+                    compileMethod(composer, classStmt, method)
+                    // store the method in the field.
+                    .aload_0()
+                    .swap()
+                    .putfield(composer.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
                 }
                 return composer;
             };
@@ -490,9 +498,7 @@ public class Compiler {
 
         @Override
         public LoxComposer visitFunctionStmt(Stmt.Function functionStmt) {
-            return compile(composer, null, functionStmt, loxComposer -> loxComposer
-                .declare(resolver.varDef(functionStmt.name))
-            );
+            return compileFunction(composer, functionStmt);
         }
 
         @Override
