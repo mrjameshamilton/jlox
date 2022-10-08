@@ -2,6 +2,7 @@ package com.craftinginterpreters.lox;
 
 import com.craftinginterpreters.lox.CompilerResolver.VarDef;
 import lox.LoxNative;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import proguard.classfile.ClassPool;
 import proguard.classfile.ProgramClass;
@@ -237,46 +238,14 @@ public class Compiler {
             return programClass;
         }
 
-        private LoxComposer compileFunction(LoxComposer composer, Stmt.Function function) {
-            return compile(composer, null, function, composer1 ->
-                composer1.declare(resolver.varDef(function.name))
-            );
-        }
-
-        private LoxComposer compileMethod(LoxComposer composer, Stmt.Class classStmt, Stmt.Function function) {
-            return compile(composer, classStmt, function, null);
-        }
-
-        private LoxComposer compile(LoxComposer composer, Stmt.Class classStmt, Stmt.Function function, Function<LoxComposer, LoxComposer> initializer) {
-            var functionClazz = new FunctionCompiler().compile(classStmt, function);
-
-            composer
-                .new_(functionClazz)
-                .dup()
-                .aload_0()
-                .line(function.name.line)
-                .invokespecial(functionClazz.getName(), "<init>", "(L" + (classStmt == null ? LOX_CALLABLE : LOX_CLASS) + ";)V");
-
-            boolean capturesAnyVariables = resolver.captured(function).isEmpty();
-            if (!capturesAnyVariables) composer.dup();
-
-            // Initialize before capturing variables.
-            // The function will be on the stack.
-            if (initializer != null) initializer.apply(composer);
-
-            if (!capturesAnyVariables)
-                composer.invokevirtual(functionClazz.getName(), "capture", "()V");
-
-            return composer;
-        }
-
         private ProgramClass createFunctionClass(Stmt.Class classStmt, Stmt.Function function) {
             boolean isMain = resolver.javaClassName(function).equals(LOX_MAIN_CLASS);
+            boolean isMethod = classStmt != null;
             var classBuilder = new ClassBuilder(
                 CLASS_VERSION_1_8,
                 PUBLIC,
                 resolver.javaClassName(function),
-                classStmt != null ? LOX_METHOD : LOX_FUNCTION
+                isMethod ? LOX_METHOD : LOX_FUNCTION
             )
             .addMethod(PUBLIC, "getName", "()Ljava/lang/String;", 10, composer -> composer
                 .ldc(function.name.lexeme)
@@ -304,40 +273,8 @@ public class Compiler {
                     );
             }
 
-            if (isMain) {
-                if (!lateInitVars.isEmpty()) {
-                    classBuilder.addMethod(PRIVATE | STATIC, "<clinit>", "()V", 65535, composer -> {
-                        var loxComposer = new LoxComposer(composer, programClassPool, resolver, allocator);
-                        lateInitVars.forEach(varDef -> loxComposer
-                            .aconst_null()
-                            .box(varDef)
-                            .putstatic(LOX_MAIN_CLASS, varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";"));
-                        composer.return_();
-                    });
-                }
-            }
-
-            classBuilder
-                .addMethod(PUBLIC, "<init>", "(L" + (classStmt == null ? LOX_CALLABLE : LOX_CLASS) + ";)V", 100, composer -> {
-                    var loxComposer = new LoxComposer(composer, programClassPool, resolver, allocator);
-                    loxComposer
-                        .aload_0()
-                        .aload_1()
-                        .invokespecial(classStmt == null ? LOX_FUNCTION : LOX_METHOD, "<init>", "(L" + (classStmt == null ? LOX_CALLABLE : LOX_CLASS) + ";)V");
-
-                    if (!isMain) {
-                        lateInitVars.forEach(varDef -> loxComposer
-                            .aload_0()
-                            .aconst_null()
-                            .box(varDef)
-                            .putfield(loxComposer.getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";"));
-                    }
-
-                    loxComposer.return_();
-                });
-
-            if (!variablesCapturedByFunction.isEmpty()) {
-                classBuilder.addMethod(PUBLIC, "capture", "()V", 65535, composer -> {
+            Function<LoxComposer, LoxComposer> captureComposer = composer -> {
+                if (!variablesCapturedByFunction.isEmpty()) {
                     composer.aload_0();
                     variablesCapturedByFunction.forEach(varDef -> {
                         if (varDef.isGlobal()) {
@@ -356,9 +293,49 @@ public class Compiler {
                                 .putfield(resolver.javaClassName(function), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
                         }
                     });
-                    composer
-                        .pop()
-                        .return_();
+                    composer.pop();
+                }
+                return composer;
+            };
+
+            if (isMain) {
+                if (!lateInitVars.isEmpty()) {
+                    classBuilder.addMethod(PRIVATE | STATIC, "<clinit>", "()V", 65535, composer -> {
+                        var loxComposer = new LoxComposer(composer, programClassPool, resolver, allocator);
+                        lateInitVars.forEach(varDef -> loxComposer
+                            .aconst_null()
+                            .box(varDef)
+                            .putstatic(LOX_MAIN_CLASS, varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";"));
+                        composer.return_();
+                    });
+                }
+            }
+
+            classBuilder
+                .addMethod(PUBLIC, "<init>", "(L" + (isMethod ? LOX_CLASS : LOX_CALLABLE) + ";)V", 100, composer -> {
+                    var loxComposer = new LoxComposer(composer, programClassPool, resolver, allocator);
+                    loxComposer
+                        .aload_0()
+                        .aload_1()
+                        .invokespecial(isMethod ? LOX_METHOD : LOX_FUNCTION, "<init>", "(L" + (isMethod ? LOX_CLASS : LOX_CALLABLE) + ";)V");
+
+                    if (!isMain) {
+                        lateInitVars.forEach(varDef -> loxComposer
+                            .aload_0()
+                            .aconst_null()
+                            .box(varDef)
+                            .putfield(loxComposer.getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";"));
+                    }
+
+                    if (isMethod) captureComposer.apply(loxComposer);
+
+                    loxComposer.return_();
+                });
+
+            if (!isMethod && !variablesCapturedByFunction.isEmpty()) {
+                classBuilder.addMethod(PUBLIC, "capture", "()V", 65535, composer -> {
+                    captureComposer.apply(new LoxComposer(composer, programClassPool, resolver, allocator));
+                    composer.return_();
                 });
             }
 
@@ -393,11 +370,16 @@ public class Compiler {
             Function<LoxComposer, LoxComposer> methodInitializer = composer -> {
                 for (var method : classStmt.methods) {
                     classBuilder.addField(PRIVATE | FINAL, resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
-                    compileMethod(composer, classStmt, method)
-                    // store the method in the field.
-                    .aload_0()
-                    .swap()
-                    .putfield(composer.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
+                    var methodClazz = new FunctionCompiler().compile(classStmt, method);
+
+                    composer
+                        .line(method.name.line)
+                        .aload_0()
+                        .new_(methodClazz)
+                        .dup()
+                        .aload_0()
+                        .invokespecial(methodClazz.getName(), "<init>", "(L" + LOX_CLASS + ";)V")
+                        .putfield(composer.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
                 }
                 return composer;
             };
@@ -498,7 +480,26 @@ public class Compiler {
 
         @Override
         public LoxComposer visitFunctionStmt(Stmt.Function functionStmt) {
-            return compileFunction(composer, functionStmt);
+            composer.line(functionStmt.name.line);
+            var functionClazz = new FunctionCompiler().compile(functionStmt);
+
+            composer
+                .new_(functionClazz)
+                .dup()
+                .aload_0()
+                .invokespecial(functionClazz.getName(), "<init>", "(L" + LOX_CALLABLE + ";)V");
+
+            boolean capturesAnyVariables = resolver.captured(functionStmt).isEmpty();
+            if (!capturesAnyVariables) composer.dup();
+
+            // Initialize before capturing variables.
+            // The function will be on the stack.
+            composer.declare(resolver.varDef(functionStmt.name));
+
+            if (!capturesAnyVariables)
+                composer.invokevirtual(functionClazz.getName(), "capture", "()V");
+
+            return composer;
         }
 
         @Override
