@@ -2,7 +2,6 @@ package com.craftinginterpreters.lox;
 
 import com.craftinginterpreters.lox.CompilerResolver.VarDef;
 import lox.LoxNative;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import proguard.classfile.ClassPool;
 import proguard.classfile.ProgramClass;
@@ -327,13 +326,15 @@ public class Compiler {
                             .putfield(loxComposer.getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";"));
                     }
 
+                    // Capturing a method's variables can be done here, since we don't need
+                    // store the method before capturing as a method itself cannot be captured.
                     if (isMethod) captureComposer.apply(loxComposer);
 
                     loxComposer.return_();
                 });
 
             if (!isMethod && !variablesCapturedByFunction.isEmpty()) {
-                classBuilder.addMethod(PUBLIC, "capture", "()V", 65535, composer -> {
+                classBuilder.addMethod(PUBLIC, "capture", "()V", 65_535, composer -> {
                     captureComposer.apply(new LoxComposer(composer, programClassPool, resolver, allocator));
                     composer.return_();
                 });
@@ -467,7 +468,9 @@ public class Compiler {
                 composer.invokespecial(clazz.getName(), "<init>", "(L" + LOX_CALLABLE + ";)V");
             }
 
-            return composer.declare(resolver.varDef(classStmt.name));
+            return composer
+                .line(classStmt.name.line)
+                .declare(resolver.varDef(classStmt.name));
         }
 
         @Override
@@ -480,21 +483,18 @@ public class Compiler {
 
         @Override
         public LoxComposer visitFunctionStmt(Stmt.Function functionStmt) {
-            composer.line(functionStmt.name.line);
             var functionClazz = new FunctionCompiler().compile(functionStmt);
 
+            boolean capturesAnyVariables = resolver.captured(functionStmt).isEmpty();
             composer
                 .new_(functionClazz)
-                .dup()
+                .also(loxComposer -> capturesAnyVariables ? loxComposer.dup() : loxComposer.dup().dup())
                 .aload_0()
                 .invokespecial(functionClazz.getName(), "<init>", "(L" + LOX_CALLABLE + ";)V");
 
-            boolean capturesAnyVariables = resolver.captured(functionStmt).isEmpty();
-            if (!capturesAnyVariables) composer.dup();
-
-            // Initialize before capturing variables.
-            // The function will be on the stack.
-            composer.declare(resolver.varDef(functionStmt.name));
+            composer
+                .line(functionStmt.name.line)
+                .declare(resolver.varDef(functionStmt.name));
 
             if (!capturesAnyVariables)
                 composer.invokevirtual(functionClazz.getName(), "capture", "()V");
@@ -511,7 +511,7 @@ public class Compiler {
                     .also(composer -> stmt.thenBranch.accept(this))
                     .goto_(endLabel)
                     .label(elseBranch)
-                    .also(composer -> { if (stmt.elseBranch != null) stmt.elseBranch.accept(this); })
+                    .also(composer -> stmt.elseBranch != null ? stmt.elseBranch.accept(this) : composer)
                     .label(endLabel);
         }
 
@@ -788,7 +788,10 @@ public class Compiler {
         @Override
         public LoxComposer visitCallExpr(Expr.Call expr) {
             return expr.callee.accept(this)
-                .also(composer -> expr.arguments.forEach(it -> it.accept(this)))
+                .also(composer -> {
+                    expr.arguments.forEach(it -> it.accept(this));
+                    return composer;
+                })
                 .line(expr.paren.line)
                 .invokedynamic(
                         0,

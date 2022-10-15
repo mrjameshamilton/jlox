@@ -3,6 +3,7 @@ package com.craftinginterpreters.lox;
 import com.craftinginterpreters.lox.Stmt.Function;
 import org.jetbrains.annotations.NotNull;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,6 +30,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     private final Map<Token, Integer> reads = new WeakHashMap<>();
     private final Stack<Map<VarDef, Boolean>> scopes = new Stack<>();
     private final Stack<Function> functionStack = new Stack<>();
+    private final Stack<Stmt.Class> classStack = new Stack<>();
     private final Map<Token, Set<VarDef>> captured = new WeakHashMap<>();
     private final Map<Token, String> javaClassNames = new WeakHashMap<>();
     private final Map<Token, String> javaFieldNames = new WeakHashMap<>();
@@ -36,7 +38,6 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
 
     public void resolve(Function main) {
         resolveFunction(main);
-        main.accept(new SelfReferencingVarInitializer());
 
         if (DEBUG) {
             System.out.println("variables: " + variables.values());
@@ -79,7 +80,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         javaClassName(function.name, namePrefix);
         beginScope(function);
         for (Token param : function.params) {
-            var varDef = declare(param);
+            var varDef = declare(param, ParameterVarDef.class);
             define(varDef);
         }
         resolve(function.body);
@@ -149,6 +150,11 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         beginScope();
     }
 
+    private void beginScope(Stmt.Class classStmt) {
+        classStack.push(classStmt);
+        beginScope();
+    }
+
     private void beginScope() {
         scopes.push(new HashMap<>());
     }
@@ -162,26 +168,40 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         functionStack.pop();
     }
 
+    private void endScope(Stmt.Class ignoredClass) {
+        endScope();
+        classStack.pop();
+    }
+
     private VarDef declare(Token name) {
+        return declare(name, VarDef.class);
+    }
+
+    private <T extends VarDef> T declare(Token name, Class<T> type) {
         if (scopes.isEmpty()) return null;
 
         var scope = scopes.peek();
-        boolean isGlobalScope = scopes.size() == 1;
-
-        VarDef varDef;
+        var isGlobalScope = scopes.size() == 1;
+        var currentFunction = functionStack.peek();
         var existingVarDef = scope.keySet().stream().filter(it -> it.token().lexeme.equals(name.lexeme)).findFirst();
+
         if (existingVarDef.isPresent()) {
-            varDef = existingVarDef.get();
-            writes.merge(varDef.token(), 1, Integer::sum);
             if (!isGlobalScope) error(name, "Already a variable with this name in this scope.");
-        } else {
-            var currentFunction = functionStack.peek();
+            writes.merge(existingVarDef.get().token(), 1, Integer::sum);
+        }
+
+        T varDef;
+        try {
             // GlobalVar is not the same as global scope -
             // there can be multiple scopes in the top-level function.
             // GlobalVar means that the var is declared in any scope that
             // is in the top-level function.
-            boolean isGlobalVar = javaClassName(currentFunction).equals(LOX_MAIN_CLASS);
-            varDef = new VarDef(name, currentFunction, isGlobalVar);
+            var isGlobalVar = javaClassName(currentFunction).equals(LOX_MAIN_CLASS);
+
+            varDef = type.getConstructor(this.getClass(), Token.class, Stmt.Function.class, Boolean.class)
+                         .newInstance(this, existingVarDef.map(VarDef::token).orElse(name), currentFunction, isGlobalVar);
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+            throw new IllegalStateException(e);
         }
 
         variables.put(name, varDef);
@@ -199,6 +219,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         }
 
         javaFieldName(varDef.token, varDef.token.lexeme);
+
         return varDef;
     }
 
@@ -316,25 +337,25 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
 
     @Override
     public Void visitClassStmt(Stmt.Class stmt) {
-        var varDef = declare(stmt.name);
+        var varDef = declare(stmt.name, ClassVarDef.class);
         define(varDef);
 
         javaClassName(stmt.name, "");
 
         if (stmt.superclass != null) resolve(stmt.superclass);
 
-        beginScope();
+        beginScope(stmt);
         define(
-            new VarDef(
+            new ThisVarDef(
             new Token(THIS, "this", null, stmt.name.line), functionStack.peek(), false)
         );
         if (stmt.superclass != null)
             define(
-                new VarDef(
+                new SuperVarDef(
                 new Token(SUPER, "super", null, stmt.name.line), functionStack.peek(), false)
             );
         stmt.methods.forEach(method -> resolveMethod(stmt, method));
-        endScope();
+        endScope(stmt);
         return null;
     }
 
@@ -346,7 +367,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
 
     @Override
     public Void visitFunctionStmt(Function stmt) {
-        var varDef = declare(stmt.name);
+        var varDef = declare(stmt.name, FunctionVarDef.class);
         define(varDef);
         resolveFunction(stmt);
         return null;
@@ -390,14 +411,15 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         return null;
     }
 
-    public class VarDef {
-        private final Token token;
-        private final Function function;
-        private final boolean isGlobal;
-        private boolean isLateInit = false;
+    public sealed class VarDef permits ClassVarDef, FunctionVarDef, ParameterVarDef, SuperVarDef, ThisVarDef {
+
+        protected final Token token;
+        protected final Function function;
+        protected final boolean isGlobal;
+        protected boolean isLateInit = false;
         private final Map<Token, Integer> captureDepth = new HashMap<>();
 
-        public VarDef(Token token, Function function, boolean isGlobal) {
+        public VarDef(Token token, Function function, Boolean isGlobal) {
             this.token = token;
             this.function = function;
             this.isGlobal = isGlobal;
@@ -458,72 +480,33 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         }
     }
 
-    private class SelfReferencingVarInitializer implements Stmt.Visitor<Void> {
-
-        private final Stack<VarDef> classStack = new Stack<>();
-
-        @Override
-        public Void visitBlockStmt(Stmt.Block stmt) {
-            stmt.statements.forEach(it -> it.accept(this));
-            return null;
+    public final class ClassVarDef extends VarDef {
+        public ClassVarDef(Token token, Stmt.Function function, Boolean isGlobal) {
+            super(token, function, isGlobal);
         }
+    }
 
-        @Override
-        public Void visitClassStmt(Stmt.Class stmt) {
-            var varDef = varDef(stmt.name);
-            if (varDef.isCaptured()) this.classStack.push(varDef);
-            stmt.methods.forEach(it -> it.accept(this));
-            if (!this.classStack.empty()) this.classStack.pop();
-            return null;
+    public final class FunctionVarDef extends VarDef {
+        public FunctionVarDef(Token token, Function function, Boolean isGlobal) {
+            super(token, function, isGlobal);
         }
+    }
 
-        @Override
-        public Void visitExpressionStmt(Stmt.Expression stmt) {
-            return null;
+    public final class ParameterVarDef extends VarDef {
+        public ParameterVarDef(Token token, Function function, Boolean isGlobal) {
+            super(token, function, isGlobal);
         }
+    }
 
-        @Override
-        public Void visitFunctionStmt(Function stmt) {
-            if (!classStack.isEmpty() && captured(stmt).contains(classStack.peek())) {
-                if (DEBUG) {
-                    System.out.println("Marking self-referencing of " + classStack.peek() + " as late init");
-                }
-                classStack.peek().isLateInit = true;
-            }
-            stmt.body.forEach(it -> it.accept(this));
-/*
-            var counter = new SpecificFunctionCallCounter(CompilerResolver.this);
-            var count = counter.count(stmt, stmt);
-            if (count > 0) varDef(stmt.name).isLateInit = true;*/
-            return null;
+    public final class SuperVarDef extends VarDef {
+        public SuperVarDef(Token token, Function function, Boolean isGlobal) {
+            super(token, function, isGlobal);
         }
+    }
 
-        @Override
-        public Void visitIfStmt(Stmt.If stmt) {
-            stmt.thenBranch.accept(this);
-            if (stmt.elseBranch != null) stmt.elseBranch.accept(this);
-            return null;
-        }
-
-        @Override
-        public Void visitPrintStmt(Stmt.Print stmt) {
-            return null;
-        }
-
-        @Override
-        public Void visitReturnStmt(Stmt.Return stmt) {
-            return null;
-        }
-
-        @Override
-        public Void visitVarStmt(Stmt.Var stmt) {
-            return null;
-        }
-
-        @Override
-        public Void visitWhileStmt(Stmt.While stmt) {
-            stmt.body.accept(this);
-            return null;
+    public final class ThisVarDef extends VarDef {
+        public ThisVarDef(Token token, Function function, Boolean isGlobal) {
+            super(token, function, isGlobal);
         }
     }
 
@@ -567,6 +550,13 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             captured.add(varDef);
             varDef.captureDepth.put(function.name, depth);
             if (DEBUG) System.out.println("capture " + varDef + " in " + function.name.lexeme + " at depth " + depth);
+            if (varDef instanceof ClassVarDef &&
+                classStack.stream().anyMatch(it -> it.name.equals(varDef.token()))) {
+                // Capturing a self-referencing class
+                // variable means it is used before it's initialized.
+                // For example: test/class/reference_self.lox
+                varDef.isLateInit = true;
+            }
         }
     }
 
@@ -575,6 +565,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         return captured.computeIfAbsent(function.name, k -> new HashSet<>());
     }
 
+    @NotNull
     public Set<VarDef> variables(Function function) {
         return variables.values()
                         .stream()
@@ -582,6 +573,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
                         .collect(Collectors.toSet());
     }
 
+    @NotNull
     public Set<VarDef> globals() {
         return variables.values()
                         .stream()
@@ -589,10 +581,12 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
                         .collect(Collectors.toSet());
     }
 
+    @NotNull
     public VarDef varDef(Token token) {
         return variables.get(token);
     }
 
+    @NotNull
     public Optional<VarDef> varDef(Expr varAccess) {
         return switch (varAccess) {
             case Expr.Variable v ->  Optional.ofNullable(varUse.get(v.name));

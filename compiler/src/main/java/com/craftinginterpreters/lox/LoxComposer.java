@@ -23,9 +23,8 @@ public class LoxComposer extends Composer<LoxComposer> {
         this.allocator = allocator;
     }
 
-    public LoxComposer also(Consumer<LoxComposer> block) {
-        block.accept(this);
-        return this;
+    public LoxComposer also(Function<LoxComposer, LoxComposer> block) {
+        return block.apply(this);
     }
 
     public LoxComposer iftruthy(Label isTruthy) {
@@ -196,9 +195,9 @@ public class LoxComposer extends Composer<LoxComposer> {
 
         return this;
     }
-
     public LoxComposer store(Stmt.Function function, Token token) {
         var varDef = resolver.varDef(token);
+
         if (varDef.isGlobal()) {
             if (varDef.isCaptured()) {
                 if (isTargetMainClass()) {
