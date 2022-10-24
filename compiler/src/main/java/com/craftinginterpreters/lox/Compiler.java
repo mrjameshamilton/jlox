@@ -384,22 +384,13 @@ public class Compiler {
                 return composer;
             };
 
-            if (classStmt.superclass != null) {
-                classBuilder.addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V", 65535, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
-                    .aload_0()
-                    .aload_1()
-                    .aload_2()
-                    .invokespecial(LOX_CLASS, "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V")
-                    .also(methodInitializer::apply)
-                    .return_());
-            } else {
-                classBuilder.addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";)V", 65535, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
-                    .aload_0()
-                    .aload_1()
-                    .invokespecial(LOX_CLASS, "<init>", "(L" + LOX_CALLABLE + ";)V")
-                    .also(methodInitializer::apply)
-                    .return_());
-            }
+            classBuilder.addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";" + (classStmt.superclass != null ? "L" + LOX_CLASS + ";" : "") + ")V", 65_535, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
+                .aload_0()
+                .aload_1()
+                .also(__ -> classStmt.superclass != null ? __.aload_2() : __.aconst_null())
+                .invokespecial(LOX_CLASS, "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V")
+                .also(methodInitializer::apply)
+                .return_());
 
             classBuilder
                     .addMethod(PUBLIC, "findMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";", 500, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
