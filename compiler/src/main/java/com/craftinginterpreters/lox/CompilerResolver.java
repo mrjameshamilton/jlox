@@ -2,6 +2,7 @@ package com.craftinginterpreters.lox;
 
 import com.craftinginterpreters.lox.Stmt.Function;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.Collection;
@@ -510,7 +511,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         }
     }
 
-    private record UnresolvedLocal(Function function, int depth, Expr varAccess, Token name) { }
+    public record UnresolvedLocal(Function function, int depth, Expr varAccess, Token name) { }
 
     private void javaClassName(Token token, String prefix) {
         prefix = prefix + functionStack
@@ -581,7 +582,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
                         .collect(Collectors.toSet());
     }
 
-    @NotNull
+    @Nullable
     public VarDef varDef(Token token) {
         return variables.get(token);
     }

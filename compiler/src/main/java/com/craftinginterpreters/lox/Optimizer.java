@@ -44,7 +44,9 @@ public class Optimizer {
         public Expr visitAssignExpr(Expr.Assign expr) {
             var value = expr.value.accept(this);
             var optionalVarDef = resolver.varDef(expr);
-            if (optionalVarDef.isPresent()) {
+            if (optionalVarDef.isEmpty()) {
+                runtimeError(new RuntimeError(expr.name, "Undefined variable '" + expr.name.lexeme + "'."));
+            } else {
                 var varDef = optionalVarDef.get();
                 if (!varDef.isRead()) {
                     if (value.accept(new SideEffectCounter()) == 0) {
@@ -204,9 +206,13 @@ public class Optimizer {
         @Override
         public Expr visitVariableExpr(Expr.Variable expr) {
             var varDef = resolver.varDef(expr);
-            return varDef.isPresent() && varExprReplacements.containsKey(varDef.get().token()) ?
-                varExprReplacements.get(varDef.get().token()) :
-                expr;
+
+            if (varDef.isEmpty()) {
+                runtimeError(new RuntimeError(expr.name, "Undefined variable '" + expr.name.lexeme + "'."));
+                return expr;
+            } else {
+                return varExprReplacements.getOrDefault(varDef.get().token(), expr);
+            }
         }
 
         @Override
@@ -319,7 +325,7 @@ public class Optimizer {
         public Stmt visitVarStmt(Stmt.Var stmt) {
             var varDef = resolver.varDef(stmt.name);
 
-            if (!varDef.isRead()) {
+            if (varDef != null && !varDef.isRead()) {
                 // The variable is never read but if it has an initializer,
                 // there could be side effects.
                 if (stmt.initializer != null) {
