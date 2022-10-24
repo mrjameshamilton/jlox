@@ -367,58 +367,55 @@ public class Compiler {
                 LOX_CLASS
             );
 
-            Function<LoxComposer, LoxComposer> methodInitializer = composer -> {
-                for (var method : classStmt.methods) {
-                    classBuilder.addField(PRIVATE | FINAL, resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
-                    var methodClazz = new FunctionCompiler().compile(classStmt, method);
-
-                    composer
-                        .line(method.name.line)
-                        .aload_0()
-                        .new_(methodClazz)
-                        .dup()
-                        .aload_0()
-                        .invokespecial(methodClazz.getName(), "<init>", "(L" + LOX_CLASS + ";)V")
-                        .putfield(composer.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
-                }
-                return composer;
-            };
-
-            classBuilder.addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";" + (classStmt.superclass != null ? "L" + LOX_CLASS + ";" : "") + ")V", 65_535, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
-                .aload_0()
-                .aload_1()
-                .also(__ -> classStmt.superclass != null ? __.aload_2() : __.aconst_null())
-                .invokespecial(LOX_CLASS, "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V")
-                .also(methodInitializer::apply)
-                .return_());
-
             classBuilder
-                    .addMethod(PUBLIC, "findMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";", 500, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
-                        .aload_1()
-                        .switch_(2, switchBuilder -> {
-                            classStmt.methods.forEach(method -> switchBuilder.case_(
-                                method.name.lexeme,
-                                caseComposer -> caseComposer
-                                    .aload_0()
-                                    .getfield(classBuilder.getProgramClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";")
-                                    .areturn()
-                            ));
-                            //noinspection SwitchStatementWithTooFewBranches
-                            return switchBuilder.default_(defaultComposer -> switch (classStmt.superclass) {
-                                case null -> defaultComposer
-                                    .aconst_null()
-                                    .areturn();
-                                default -> defaultComposer
-                                    .aload_0()
-                                    .invokevirtual(classBuilder.getProgramClass().getName(), "getSuperClass", "()L" + LOX_CLASS + ";")
-                                    .aload_1()
-                                    .invokevirtual(LOX_CLASS, "findMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";")
-                                    .areturn();
-                            });
-                        }))
-                    .addMethod(PUBLIC, "getName", "()Ljava/lang/String;", 10, composer -> composer
-                            .ldc(classStmt.name.lexeme)
-                            .areturn());
+                .addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";" + (classStmt.superclass != null ? "L" + LOX_CLASS + ";" : "") + ")V", 65_535, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
+                    .aload_0()
+                    .aload_1()
+                    .also(__ -> classStmt.superclass != null ? __.aload_2() : __.aconst_null())
+                    .invokespecial(LOX_CLASS, "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V")
+                    .also(methodInitializer -> {
+                        for (var method : classStmt.methods) {
+                            classBuilder.addField(PRIVATE | FINAL, resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
+                            var methodClazz = new FunctionCompiler().compile(classStmt, method);
+
+                            methodInitializer
+                                .line(method.name.line)
+                                .aload_0()
+                                .new_(methodClazz)
+                                .dup()
+                                .aload_0()
+                                .invokespecial(methodClazz.getName(), "<init>", "(L" + LOX_CLASS + ";)V")
+                                .putfield(methodInitializer.getTargetClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
+                        }
+                        return methodInitializer;
+                    })
+                    .return_())
+                .addMethod(PUBLIC, "findMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";", 500, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
+                    .aload_1()
+                    .switch_(2, switchBuilder -> {
+                        classStmt.methods.forEach(method -> switchBuilder.case_(
+                            method.name.lexeme,
+                            caseComposer -> caseComposer
+                                .aload_0()
+                                .getfield(classBuilder.getProgramClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";")
+                                .areturn()
+                        ));
+                        //noinspection SwitchStatementWithTooFewBranches
+                        return switchBuilder.default_(defaultComposer -> switch (classStmt.superclass) {
+                            case null -> defaultComposer
+                                .aconst_null()
+                                .areturn();
+                            default -> defaultComposer
+                                .aload_0()
+                                .invokevirtual(classBuilder.getProgramClass().getName(), "getSuperClass", "()L" + LOX_CLASS + ";")
+                                .aload_1()
+                                .invokevirtual(LOX_CLASS, "findMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";")
+                                .areturn();
+                        });
+                    }))
+                .addMethod(PUBLIC, "getName", "()Ljava/lang/String;", 10, composer -> composer
+                    .ldc(classStmt.name.lexeme)
+                    .areturn());
 
             var clazz = classBuilder.getProgramClass();
             programClassPool.addClass(clazz);
