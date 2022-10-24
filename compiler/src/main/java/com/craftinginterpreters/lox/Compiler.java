@@ -260,7 +260,7 @@ public class Compiler {
             var lateInitVars = variables.stream().filter(VarDef::isLateInit).toList();
 
             if (isMain) {
-                // main can't capture in variables, but variables declared in main can be captured.
+                // main can't capture variables, but variables declared in main can be captured.
                 capturedVariablesDeclaredInFunction.forEach(global -> classBuilder.
                     addField(PUBLIC | STATIC, global.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
                 );
