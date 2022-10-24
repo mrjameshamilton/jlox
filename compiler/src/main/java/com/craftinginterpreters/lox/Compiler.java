@@ -334,10 +334,9 @@ public class Compiler {
                 });
 
             if (!isMethod && !variablesCapturedByFunction.isEmpty()) {
-                classBuilder.addMethod(PUBLIC, "capture", "()V", 65_535, composer -> {
-                    captureComposer.apply(new LoxComposer(composer, programClassPool, resolver, allocator));
-                    composer.return_();
-                });
+                classBuilder.addMethod(PUBLIC, "capture", "()V", 65_535, composer -> captureComposer
+                    .apply(new LoxComposer(composer, programClassPool, resolver, allocator))
+                    .return_());
             }
 
             if (function instanceof NativeFunction) {
