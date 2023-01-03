@@ -178,19 +178,21 @@ public class Compiler {
             composer = new LoxComposer(new CompactCodeAttributeComposer(programClass), programClassPool, resolver, allocator);
             composer.beginCodeFragment(65_535);
 
+            var params = functionStmt.params
+                .stream()
+                .map(resolver::varDef)
+                .filter(VarDef::isRead)
+                .toList();
+
             if (functionStmt instanceof NativeFunction) {
-                for (int i = 0; i < functionStmt.params.size(); i++) composer.aload(i);
+                if (!params.isEmpty()) composer
+                    .aload_1()
+                    .unpack(params.size());
+
                 composer
                     .invokestatic(LOX_NATIVE, functionStmt.name.lexeme, "(" + "Ljava/lang/Object;".repeat(functionStmt.params.size()) + ")Ljava/lang/Object;")
                     .areturn();
             } else {
-                var params = functionStmt
-                    .params
-                    .stream()
-                    .map(resolver::varDef)
-                    .filter(VarDef::isRead)
-                    .toList();
-
                 if (!params.isEmpty()) composer
                     .aload_1()
                     .unpack(

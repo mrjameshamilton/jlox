@@ -240,6 +240,10 @@ public class Composer<T extends CompactCodeAttributeComposer> extends CompactCod
         }
     }
 
+    public T unpack(int n) {
+        return unpack(n, null);
+    }
+
     public T unpack(int n, BiFunction<T, Integer, T> action) {
         for (int i = 0; i < n; i++) {
             if (i != n - 1) dup();

@@ -473,7 +473,8 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         }
 
         public boolean isRead() {
-            return reads.getOrDefault(token, 0) > 0;
+            return function instanceof Compiler.NativeFunction || // Assume native function parameters are always read
+                reads.getOrDefault(token, 0) > 0;
         }
 
         public String getJavaFieldName() {
