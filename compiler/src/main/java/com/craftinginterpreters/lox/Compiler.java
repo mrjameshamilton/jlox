@@ -73,7 +73,8 @@ public class Compiler {
             lox.LoxFunction.class,
             lox.LoxInstance.class,
             lox.LoxInvoker.class,
-            lox.LoxMethod.class
+            lox.LoxMethod.class,
+            lox.LoxNative.class
         );
 
         var mainFunction = new Stmt.Function(
