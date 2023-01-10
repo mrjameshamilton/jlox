@@ -212,6 +212,11 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             var resolved = new HashSet<UnresolvedLocal>();
             unresolved.stream().filter(it -> it.name.lexeme.equals(name.lexeme)).forEach(it -> {
                 varUse.put(it.name, varDef);
+
+                // Update reads that occurred before declaration
+                reads.merge(varDef.token(), 1, Integer::sum);
+                reads.remove(it.name);
+
                 capture(it.function, varDef, it.depth);
                 resolved.add(it);
                 varDef.isLateInit = true;
@@ -324,7 +329,12 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         }
 
         var varDef = resolveLocal(expr, expr.name);
-        varDef.ifPresent(it -> reads.merge(it.token, 1, Integer::sum));
+        varDef.ifPresentOrElse(
+            it -> reads.merge(it.token, 1, Integer::sum),
+
+            // Might not have been declared yet (lateinit)
+            () -> reads.put(expr.name, 1)
+        );
         return null;
     }
 
