@@ -572,6 +572,13 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         }
     }
 
+    public void decrementReads(VarDef varDef)
+    {
+        var current = reads.get(varDef.token());
+        if (current == 1) reads.remove(varDef.token());
+        else reads.replace(varDef.token(), current - 1);
+    }
+
     @NotNull
     public Set<VarDef> captured(Function function) {
         return captured.computeIfAbsent(function.name, k -> new HashSet<>());

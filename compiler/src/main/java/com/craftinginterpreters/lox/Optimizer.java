@@ -211,6 +211,15 @@ public class Optimizer {
                 runtimeError(new RuntimeError(expr.name, "Undefined variable '" + expr.name.lexeme + "'."));
                 return expr;
             } else {
+                if (varExprReplacements.containsKey(varDef.get().token())) {
+                    var newExpr = varExprReplacements.get(varDef.get().token());
+
+                    if (newExpr instanceof Expr.Literal) {
+                        // If a variable access was replaced by a literal,
+                        // then the variable is read one less time.
+                        resolver.decrementReads(varDef.get());
+                    }
+                }
                 return varExprReplacements.getOrDefault(varDef.get().token(), expr);
             }
         }
