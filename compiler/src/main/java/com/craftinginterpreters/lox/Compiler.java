@@ -135,7 +135,7 @@ public class Compiler {
         programClassPool.addClass(mainMethodClass);
 
         ClassPool classPool = preverify(programClassPool);
-        if (DEBUG) classPool.classesAccept(new ClassPrinter());
+        if (DEBUG) classPool.classesAccept("!lox/**", new ClassPrinter());
         return classPool;
     }
 
