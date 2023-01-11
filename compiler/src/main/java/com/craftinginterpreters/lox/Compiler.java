@@ -182,7 +182,6 @@ public class Compiler {
             var params = functionStmt.params
                 .stream()
                 .map(resolver::varDef)
-                .filter(VarDef::isRead)
                 .toList();
 
             if (functionStmt instanceof NativeFunction) {
@@ -198,7 +197,12 @@ public class Compiler {
                     .aload_1()
                     .unpack(
                         params.size(),
-                        (composer, n) -> composer.declare(params.get(n))
+                        (composer, n) -> {
+                            composer.declare(params.get(n));
+                            // TODO: avoid extract it from the array instead?
+                            if (!params.get(n).isRead()) composer.pop();
+                            return composer;
+                        }
                     );
 
                 resolver
