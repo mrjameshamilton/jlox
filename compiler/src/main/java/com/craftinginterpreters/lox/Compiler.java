@@ -262,8 +262,8 @@ public class Compiler {
             .addMethod(PUBLIC | VARARGS, "invoke", "([Ljava/lang/Object;)Ljava/lang/Object;");
 
             var variables = resolver.variables(function);
-            var variablesCapturedByFunction = resolver.captured(function);
-            var capturedVariablesDeclaredInFunction = variables.stream().filter(VarDef::isCaptured);
+            var variablesCapturedByFunction = resolver.captured(function).stream().filter(VarDef::isRead).toList();
+            var capturedVariablesDeclaredInFunction = variables.stream().filter(VarDef::isCaptured).filter(VarDef::isRead);
             var lateInitVars = variables.stream().filter(VarDef::isLateInit).toList();
 
             if (isMain) {
@@ -479,10 +479,14 @@ public class Compiler {
         public LoxComposer visitFunctionStmt(Stmt.Function functionStmt) {
             var functionClazz = new FunctionCompiler().compile(functionStmt);
 
-            boolean capturesAnyVariables = resolver.captured(functionStmt).isEmpty();
+            boolean capturesAnyVariables = resolver
+                .captured(functionStmt)
+                .stream()
+                .anyMatch(VarDef::isRead);
+
             composer
                 .new_(functionClazz)
-                .also(loxComposer -> capturesAnyVariables ? loxComposer.dup() : loxComposer.dup().dup())
+                .also(loxComposer -> capturesAnyVariables ? loxComposer.dup().dup() : loxComposer.dup())
                 .aload_0()
                 .invokespecial(functionClazz.getName(), "<init>", "(L" + LOX_CALLABLE + ";)V");
 
@@ -490,7 +494,7 @@ public class Compiler {
                 .line(functionStmt.name.line)
                 .declare(resolver.varDef(functionStmt.name));
 
-            if (!capturesAnyVariables)
+            if (capturesAnyVariables)
                 composer.invokevirtual(functionClazz.getName(), "capture", "()V");
 
             return composer;
