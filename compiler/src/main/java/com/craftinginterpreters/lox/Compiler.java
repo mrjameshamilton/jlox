@@ -111,13 +111,15 @@ public class Compiler {
                         .pop()
                         .return_(),
                      __ -> __
-                    .catch_("java/lang/StackOverflowError", it -> it
-                        .pop()
-                        .getstatic("java/lang/System", "err", "Ljava/io/PrintStream;")
+                    .catch_("java/lang/StackOverflowError", it -> {
+                        if (!DEBUG) it.pop();
+                        if (DEBUG) it.invokevirtual("java/lang/Throwable", "printStackTrace", "()V");
+                         it.getstatic("java/lang/System", "err", "Ljava/io/PrintStream;")
                         .ldc("Stack overflow.")
                         .invokevirtual("java/io/PrintStream", "println", "(Ljava/lang/Object;)V")
-                        .goto_(error))
-                    .catchAll(it -> {
+                        .goto_(error);
+                         return it;
+                    }).catchAll(it -> {
                         if (DEBUG) it.dup();
                         it.getstatic("java/lang/System", "err", "Ljava/io/PrintStream;")
                           .swap()
