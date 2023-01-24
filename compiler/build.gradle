@@ -67,5 +67,6 @@ task craftingInterpretersTest(type: Exec) {
 }
 
 test {
+    dependsOn craftingInterpretersTest
     useJUnitPlatform()
 }
