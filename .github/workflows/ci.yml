@@ -32,6 +32,9 @@ jobs:
         distribution: 'temurin'
     - name: Setup Dart SDK
       uses: dart-lang/setup-dart@v1.4
+    - name: Install Dart libs
+      run: make get
+      working-directory: craftinginterpreters
     - name: Build with Gradle
       uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
       with:
