@@ -90,20 +90,44 @@ public class Optimizer {
                         return expr.left;
                     }
                 }
-               case SLASH -> {
-                    if (left instanceof Expr.Literal a && right instanceof Expr.Literal b &&
-                        a.value instanceof Double d1 && b.value instanceof Double d2) {
-                        return new Expr.Literal(d1 / d2);
+                case SLASH -> {
+                     if (left instanceof Expr.Literal a && right instanceof Expr.Literal b &&
+                         a.value instanceof Double d1 && b.value instanceof Double d2) {
+                         return new Expr.Literal(d1 / d2);
+                     }
+                 }
+                case STAR -> {
+                     if (left instanceof Expr.Literal a && a.value instanceof Double d1 &&
+                         right instanceof Expr.Literal b && b.value instanceof Double d2) {
+                         return new Expr.Literal(d1 * d2);
+                     }
+                     if (left instanceof Expr.Literal a && a.value instanceof Double d1 && d1 == 0 ||
+                         right instanceof Expr.Literal b && b.value instanceof Double d2 && d2 == 0) {
+                         return new Expr.Literal(0.0);
+                     }
+                }
+                case GREATER -> {
+                     if (left instanceof Expr.Literal a && a.value instanceof Double d1 &&
+                         right instanceof Expr.Literal b && b.value instanceof Double d2) {
+                         return new Expr.Literal(d1 > d2);
+                     }
+                }
+                case GREATER_EQUAL -> {
+                     if (left instanceof Expr.Literal a && a.value instanceof Double d1 &&
+                             right instanceof Expr.Literal b && b.value instanceof Double d2) {
+                         return new Expr.Literal(d1 >= d2);
+                     }
+                }
+                case LESS -> {
+                    if (left instanceof Expr.Literal a && a.value instanceof Double d1 &&
+                            right instanceof Expr.Literal b && b.value instanceof Double d2) {
+                        return new Expr.Literal(d1 < d2);
                     }
                 }
-                case STAR -> {
+                case LESS_EQUAL -> {
                     if (left instanceof Expr.Literal a && a.value instanceof Double d1 &&
-                        right instanceof Expr.Literal b && b.value instanceof Double d2) {
-                        return new Expr.Literal(d1 * d2);
-                    }
-                    if (left instanceof Expr.Literal a && a.value instanceof Double d1 && d1 == 0 ||
-                        right instanceof Expr.Literal b && b.value instanceof Double d2 && d2 == 0) {
-                        return new Expr.Literal(0.0);
+                            right instanceof Expr.Literal b && b.value instanceof Double d2) {
+                        return new Expr.Literal(d1 <= d2);
                     }
                 }
             }
