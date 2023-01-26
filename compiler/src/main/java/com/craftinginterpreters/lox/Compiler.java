@@ -293,10 +293,17 @@ public class Compiler {
                         } else {
                             composer
                                 .dup()
-                                .aload_0()
-                                .iconst(varDef.distanceTo(function))
-                                .invokeinterface(LOX_CALLABLE, "getEnclosing", "(I)L" + LOX_CALLABLE + ";")
-                                .checkcast(resolver.javaClassName(varDef.function()))
+                                .aload_0();
+
+                            int distance = varDef.distanceTo(function);
+                            if (distance > 0) {
+                                composer
+                                    .iconst(distance)
+                                    .invokeinterface(LOX_CALLABLE, "getEnclosing", "(I)L" + LOX_CALLABLE + ";")
+                                    .checkcast(resolver.javaClassName(varDef.function()));
+                            }
+
+                            composer
                                 .getfield(resolver.javaClassName(varDef.function()), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";")
                                 .putfield(resolver.javaClassName(function), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
                         }
@@ -889,13 +896,20 @@ public class Compiler {
 
         @Override
         public LoxComposer visitSuperExpr(Expr.Super expr) {
-            return composer
+            composer
                 .line(expr.method.line)
                 // First get the closest method
-                .aload_0()
-                .iconst(resolver.varDef(expr).orElseThrow().distanceTo(currentFunction))
-                .invokeinterface(LOX_CALLABLE, "getEnclosing", "(I)L" + LOX_CALLABLE +";")
-                .checkcast(LOX_METHOD)
+                .aload_0();
+
+            int distance = resolver.varDef(expr).orElseThrow().distanceTo(currentFunction);
+            if (distance > 0) {
+                composer
+                    .iconst(distance)
+                    .invokeinterface(LOX_CALLABLE, "getEnclosing", "(I)L" + LOX_CALLABLE +";")
+                    .checkcast(LOX_METHOD);
+            }
+
+            composer
                 .dup() // thismethod, thismethod
                 // Then get the class in which the method is defined
                 .invokevirtual(LOX_METHOD, "getLoxClass", "()L" + LOX_CLASS + ";")
@@ -906,16 +920,21 @@ public class Compiler {
                 .invokevirtual(LOX_METHOD, "getReceiver", "()L" + LOX_INSTANCE + ";") // supermethod, thisinstance
                 // Finally, bind the instance to the super method
                 .invokevirtual(LOX_METHOD, "bind", "(L" + LOX_INSTANCE + ";)L" + LOX_METHOD + ";"); // []
+
+            return composer;
         }
 
         @Override
         public LoxComposer visitThisExpr(Expr.This expr) {
-            return composer
-                    .aload_0()
-                    .iconst(resolver.varDef(expr).orElseThrow().distanceTo(currentFunction))
+            int distance = resolver.varDef(expr).orElseThrow().distanceTo(currentFunction);
+            composer.aload_0();
+            if (distance > 0) {
+                composer
+                    .iconst(distance)
                     .invokeinterface(LOX_CALLABLE, "getEnclosing", "(I)L" + LOX_CALLABLE + ";")
-                    .checkcast(LOX_METHOD)
-                    .invokevirtual(LOX_METHOD, "getReceiver", "()L" + LOX_INSTANCE + ";");
+                    .checkcast(LOX_METHOD);
+            }
+            return composer.invokevirtual(LOX_METHOD, "getReceiver", "()L" + LOX_INSTANCE + ";");
         }
 
         @Override
