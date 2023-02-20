@@ -5,7 +5,6 @@ import proguard.classfile.ClassPool;
 import proguard.classfile.editor.CompactCodeAttributeComposer;
 
 import java.util.Arrays;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static com.craftinginterpreters.lox.LoxConstants.*;
@@ -121,9 +120,13 @@ public class LoxComposer extends Composer<LoxComposer> {
     }
 
     public LoxComposer unbox(VarDef varDef) {
+        return unbox(varDef, true);
+    }
+
+    public LoxComposer unbox(VarDef varDef, boolean checkcast) {
         if (!varDef.isCaptured()) throw new IllegalArgumentException("Cannot unbox a non-captured variable.");
 
-        checkcast(LOX_CAPTURED);
+        if (checkcast) checkcast(LOX_CAPTURED);
         invokevirtual(LOX_CAPTURED, "getValue", "()Ljava/lang/Object;");
         return this;
     }
@@ -180,7 +183,7 @@ public class LoxComposer extends Composer<LoxComposer> {
                             aload_0();
                             getfield(getTargetClass().getName(), varDef.getJavaFieldName(), "L" + LOX_CAPTURED + ";");
                         }
-                        unbox(varDef);
+                        unbox(varDef, false);
                     } else {
                         assert isTargetMainClass();
                         aload(allocator.slot(function, varDef));
