@@ -195,17 +195,19 @@ public class Compiler {
                     .invokestatic(LOX_NATIVE, functionStmt.name.lexeme, "(" + "Ljava/lang/Object;".repeat(functionStmt.params.size()) + ")Ljava/lang/Object;")
                     .areturn();
             } else {
-                if (!params.isEmpty()) composer
-                    .aload_1()
-                    .unpack(
-                        params.size(),
-                        (composer, n) -> {
-                            composer.declare(params.get(n));
-                            // TODO: avoid extract it from the array instead?
-                            if (!params.get(n).isRead()) composer.pop();
-                            return composer;
+                if (params.stream().anyMatch(VarDef::isRead)) {
+                    composer.aload_1();
+                    for (int i = 0; i < params.size(); i++) {
+                        if (params.get(i).isRead()) {
+                            composer
+                                .dup() // the param array
+                                .pushInt(i)
+                                .aaload()
+                                .declare(params.get(i));
                         }
-                    );
+                    }
+                    composer.pop();
+                }
 
                 resolver
                     .captured(functionStmt)
