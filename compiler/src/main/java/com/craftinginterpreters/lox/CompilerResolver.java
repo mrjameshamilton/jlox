@@ -607,12 +607,16 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
 
     @NotNull
     public Optional<VarDef> varDef(Expr varAccess) {
-        return switch (varAccess) {
-            case Expr.Variable v ->  Optional.ofNullable(varUse.get(v.name));
-            case Expr.Assign v -> Optional.ofNullable(varUse.get(v.name));
-            case Expr.Super v -> Optional.ofNullable(varUse.get(v.keyword));
-            case Expr.This v -> Optional.ofNullable(varUse.get(v.keyword));
-            default -> throw new IllegalArgumentException("Invalid varAccess: " + varAccess);
-        };
+        if (varAccess instanceof Expr.Variable v) {
+            return Optional.ofNullable(varUse.get(v.name));
+        } else if (varAccess instanceof Expr.Assign v) {
+            return Optional.ofNullable(varUse.get(v.name));
+        } else if (varAccess instanceof Expr.Super v) {
+            return Optional.ofNullable(varUse.get(v.keyword));
+        } else if (varAccess instanceof Expr.This v) {
+            return Optional.ofNullable(varUse.get(v.keyword));
+        } else {
+            throw new IllegalArgumentException("Invalid varAccess: " + varAccess);
+        }
     }
 }

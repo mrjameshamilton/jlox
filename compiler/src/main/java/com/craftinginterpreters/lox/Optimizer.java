@@ -158,12 +158,14 @@ public class Optimizer {
 
         @Override
         public Expr visitGroupingExpr(Expr.Grouping expr) {
-            return switch (expr.expression) {
-                case Expr.Literal literalExpr -> literalExpr;
+            if (expr.expression instanceof Expr.Literal literalExpr) {
+                return literalExpr;
+            } else if (expr.expression instanceof Expr.Grouping groupingExpr) {
                 // Recursively unwrap nested groupings
-                case Expr.Grouping groupingExpr -> visitGroupingExpr(groupingExpr);
-                default -> new Expr.Grouping(expr.expression.accept(this));
-            };
+                return visitGroupingExpr(groupingExpr);
+            } else {
+                return new Expr.Grouping(expr.expression.accept(this));
+            }
         }
 
         @Override

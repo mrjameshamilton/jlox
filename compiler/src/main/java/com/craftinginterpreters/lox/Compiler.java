@@ -418,17 +418,19 @@ public class Compiler {
                                 .getfield(classBuilder.getProgramClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";")
                                 .areturn()
                         ));
-                        //noinspection SwitchStatementWithTooFewBranches
-                        return switchBuilder.default_(defaultComposer -> switch (classStmt.superclass) {
-                            case null -> defaultComposer
-                                .aconst_null()
-                                .areturn();
-                            default -> defaultComposer
-                                .aload_0()
-                                .invokevirtual(classBuilder.getProgramClass().getName(), "getSuperClass", "()L" + LOX_CLASS + ";")
-                                .aload_1()
-                                .invokevirtual(LOX_CLASS, "findMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";")
-                                .areturn();
+                        return switchBuilder.default_(defaultComposer -> {
+                            if (classStmt.superclass == null) {
+                                return defaultComposer
+                                        .aconst_null()
+                                        .areturn();
+                            } else {
+                                return defaultComposer
+                                        .aload_0()
+                                        .invokevirtual(classBuilder.getProgramClass().getName(), "getSuperClass", "()L" + LOX_CLASS + ";")
+                                        .aload_1()
+                                        .invokevirtual(LOX_CLASS, "findMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";")
+                                        .areturn();
+                            }
                         });
                     }))
                 .addMethod(PUBLIC, "getName", "()Ljava/lang/String;", 10, composer -> composer
@@ -843,14 +845,19 @@ public class Compiler {
 
         @Override
         public LoxComposer visitLiteralExpr(Expr.Literal expr) {
-            return switch (expr.value) {
-                case Boolean b && b == true -> composer.getstatic("java/lang/Boolean", "TRUE", "Ljava/lang/Boolean;");
-                case Boolean b && b == false -> composer.getstatic("java/lang/Boolean", "FALSE", "Ljava/lang/Boolean;");
-                case String s -> composer.ldc(s);
-                case Double d -> composer.pushDouble(d).box("java/lang/Double");
-                case null -> composer.aconst_null();
-                default -> throw new IllegalArgumentException("Unknown literal type: " + expr.value);
-            };
+            if (expr.value instanceof Boolean b) {
+                return b ?
+                        composer.getstatic("java/lang/Boolean", "TRUE", "Ljava/lang/Boolean;") :
+                        composer.getstatic("java/lang/Boolean", "FALSE", "Ljava/lang/Boolean;");
+            } else if (expr.value instanceof String s) {
+                return composer.ldc(s);
+            } else if (expr.value instanceof Double d) {
+                return composer.pushDouble(d).box("java/lang/Double");
+            } else if (expr.value == null) {
+                return composer.aconst_null();
+            } else {
+                throw new IllegalArgumentException("Unknown literal type: " + expr.value);
+            }
         }
 
         @Override
@@ -1018,7 +1025,7 @@ public class Compiler {
         for (Method declaredMethod : LoxNative.class.getDeclaredMethods()) {
             var list = new ArrayList<Token>();
             for (int j = 0, parametersLength = declaredMethod.getParameters().length; j < parametersLength; j++) {
-                list.add(new Token(IDENTIFIER, j + "", null, 0));
+                list.add(new Token(IDENTIFIER, String.valueOf(j), null, 0));
             }
             nativeFunctions.add(new NativeFunction(
                 new Token(IDENTIFIER, declaredMethod.getName(), null, 0),
