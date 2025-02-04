@@ -11,6 +11,15 @@ jlox adds the following:
 
 # build and run
 
+Before the initial build, you will need to run a couple of commands to install the `craftinginterpreters` submodule.
+
+```shell
+git submodule init
+git submodule update
+```
+
+If you do not do this first, you will get a bunch of compile errors about missing classes, like `Stmt`, `Expr`, and `Function`.
+
 The Gradle `build` task will run the Lox tests and build a jar in the lib folder.
 The jar can be compiled without running the tests with the `copyJar` task.
 
