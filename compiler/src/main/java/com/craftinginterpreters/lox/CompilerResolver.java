@@ -213,9 +213,10 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             unresolved.stream().filter(it -> it.name.lexeme.equals(name.lexeme)).forEach(it -> {
                 varUse.put(it.name, varDef);
 
-                // Update reads that occurred before declaration
+                // Update reads and writes that occurred before declaration
                 reads.merge(varDef.token(), 1, Integer::sum);
                 reads.remove(it.name);
+                if (it.varAccess instanceof Expr.Assign) writes.merge(varDef.token(), 1, Integer::sum);
 
                 capture(it.function, varDef, it.depth);
                 resolved.add(it);
@@ -409,7 +410,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         var varDef = declare(stmt.name);
         if (stmt.initializer != null) {
             resolve(stmt.initializer);
-            if (varDef != null) writes.put(varDef.token, 1);
+            if (varDef != null) writes.merge(varDef.token, 1, Integer::sum);
         }
         define(varDef);
         return null;

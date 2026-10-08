@@ -377,7 +377,7 @@ public class Optimizer {
 
             if (stmt.initializer != null) {
                 var expr = stmt.initializer.accept(this);
-                if (expr instanceof Expr.Literal && varDef.isFinal()) {
+                if (expr instanceof Expr.Literal && varDef.isFinal() && !varDef.isLateInit()) {
                     varExprReplacements.put(varDef.token(), expr);
                     return null;
                 }
