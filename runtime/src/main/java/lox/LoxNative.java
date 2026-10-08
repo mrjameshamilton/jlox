@@ -40,6 +40,11 @@ public class LoxNative {
         return new String(bytes, 0, count, UTF_8);
     }
 
+    public static Object chr(Object o) {
+        int codepoint = ((Double)o).intValue();
+        return new String(Character.toChars(codepoint));
+    }
+
     public static Object exit(Object o) {
         System.exit(((Double)o).intValue());
         return null;
